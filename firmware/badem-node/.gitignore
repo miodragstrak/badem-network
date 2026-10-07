@@ -1,0 +1,25 @@
+# PlatformIO and Arduino generated files
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+arduino-build/
+arduino-cache/
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.a
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+secrets/
+secrets.*
+credentials.*
+*keypair*.json
+wallet*.json
+*.key
+*.pem
