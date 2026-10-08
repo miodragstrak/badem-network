@@ -16,8 +16,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
+from cryptography.exceptions import InvalidSignature
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from backend.proofs import ProductionProof, canonical_message, registered_public_key
 
 
 class NewJob(BaseModel):
@@ -57,17 +60,39 @@ CREATE TABLE IF NOT EXISTS machine_events (
     event_hash TEXT NOT NULL,
     UNIQUE(job_id, sequence)
 );
+CREATE TABLE IF NOT EXISTS production_proofs (
+    proof_id TEXT PRIMARY KEY,
+    node_id TEXT NOT NULL,
+    job_id TEXT NOT NULL REFERENCES jobs(id),
+    event TEXT NOT NULL CHECK(event = 'COMPLETED'),
+    timestamp INTEGER NOT NULL,
+    proof_hash TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    canonical_message TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    UNIQUE(node_id, job_id, event)
+);
 """
 
 
 def create_app(db_path: str | None = None, admin_key: str | None = None,
-               device_id: str | None = None, device_secret: str | None = None) -> FastAPI:
+               device_id: str | None = None, device_secret: str | None = None,
+               node_id: str | None = None, node_public_key: str | None = None) -> FastAPI:
     db_path = db_path or os.getenv("BADEM_DB_PATH", "badem.db")
     admin_key = admin_key or os.getenv("BADEM_ADMIN_KEY", "")
     device_id = device_id or os.getenv("BADEM_DEVICE_ID", "")
     device_secret = device_secret or os.getenv("BADEM_DEVICE_SECRET", "")
     if not all((admin_key, device_id, device_secret)):
         raise RuntimeError("Set BADEM_ADMIN_KEY, BADEM_DEVICE_ID and BADEM_DEVICE_SECRET")
+    node_id = node_id or os.getenv("BADEM_NODE_ID", device_id)
+    node_public_key = node_public_key or os.getenv("BADEM_NODE_PUBLIC_KEY", "")
+    expected_key = None
+    if node_public_key:
+        try:
+            expected_key = registered_public_key(node_public_key)
+        except ValueError:
+            raise RuntimeError("BADEM_NODE_PUBLIC_KEY must be a 32-byte Ed25519 key in hex") from None
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as connection:
         connection.executescript(SCHEMA)
@@ -175,5 +200,42 @@ def create_app(db_path: str | None = None, admin_key: str | None = None,
             connection.execute("UPDATE jobs SET status=? WHERE id=?", (new_status, event.job_id))
         return {"status": new_status, "event_hash": event_hash}
 
-    return app
+    @app.post("/api/proofs", status_code=201)
+    def ingest_proof(proof: ProductionProof):
+        if expected_key is None or proof.node_id != node_id:
+            raise HTTPException(403, "Node is not registered")
+        if not hmac.compare_digest(bytes.fromhex(proof.public_key), expected_key.public_bytes_raw()):
+            raise HTTPException(403, "Public key does not match registered node")
+        message = canonical_message(proof)
+        try:
+            expected_key.verify(bytes.fromhex(proof.signature), message)
+        except InvalidSignature:
+            raise HTTPException(401, "Invalid proof signature") from None
+        with db() as connection:
+            job = connection.execute("SELECT * FROM jobs WHERE id=?", (proof.job_id,)).fetchone()
+            if job is None:
+                raise HTTPException(404, "Job not found")
+            if job["machine_id"] != device_id:
+                raise HTTPException(403, "Node is not assigned to this job's machine")
+            if connection.execute(
+                "SELECT 1 FROM production_proofs WHERE node_id=? AND job_id=? AND event=?",
+                (proof.node_id, proof.job_id, proof.event),
+            ).fetchone():
+                raise HTTPException(409, "Proof already exists for this node, job and event")
+            if job["status"] not in {"CREATED", "RUNNING", "AWAITING_BUYER"}:
+                raise HTTPException(409, f"Cannot accept completion proof from {job['status']}")
+            proof_id = str(uuid.uuid4())
+            connection.execute(
+                "INSERT INTO production_proofs "
+                "(proof_id,node_id,job_id,event,timestamp,proof_hash,public_key,signature,"
+                "canonical_message,received_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (proof_id, proof.node_id, proof.job_id, proof.event, proof.timestamp,
+                 proof.proof_hash, proof.public_key, proof.signature, message.decode("utf-8"),
+                 int(time.time())),
+            )
+            connection.execute("UPDATE jobs SET status='PROOF_RECEIVED' WHERE id=?", (proof.job_id,))
+        return {"proof_id": proof_id, "node_id": proof.node_id, "job_id": proof.job_id,
+                "status": "PROOF_RECEIVED", "signature_verified": True,
+                "buyer_confirmation": "NOT_IMPLEMENTED", "chain": "NOT_CONNECTED"}
 
+    return app
