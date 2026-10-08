@@ -204,7 +204,10 @@ missing/invalid environment configuration 503. There is no background worker
 for anchors. Never discard pending receipts just because a request timed out.
 
 RPC URL and the separate payer private key are environment-only configuration
-(`SOLANA_RPC_URL`, `SOLANA_PAYER_PRIVATE_KEY`, `SOLANA_CLUSTER=devnet`). The
+(`SOLANA_RPC_URL`, `SOLANA_CLUSTER=devnet`, and exactly one of
+`SOLANA_PAYER_KEYPAIR_PATH` or `SOLANA_PAYER_PRIVATE_KEY`). Prefer a local
+Solana CLI JSON keypair file outside the repository; its contents are never
+printed or copied into tracked files. The
 backend refuses non-Devnet genesis hashes. No key/seed phrase is committed,
 and automated tests mock RPC and use ephemeral unfunded keys.
 

@@ -214,7 +214,8 @@ Configure these in the **API process environment** before anchoring:
 | Setting | Meaning |
 | --- | --- |
 | `SOLANA_RPC_URL` | HTTPS Devnet RPC endpoint, e.g. `https://api.devnet.solana.com` |
-| `SOLANA_PAYER_PRIVATE_KEY` | Disposable Devnet payer: Base58-encoded 64-byte Solana keypair, or JSON array of 64 integer bytes |
+| `SOLANA_PAYER_KEYPAIR_PATH` | Preferred: readable local Solana CLI JSON keypair file outside the repository; `~` is expanded |
+| `SOLANA_PAYER_PRIVATE_KEY` | Alternative: Base58-encoded 64-byte Solana keypair, or JSON array of 64 integer bytes |
 | `SOLANA_CLUSTER` | `devnet` only; defaults to `devnet` |
 
 Use a separate test payer with Devnet SOL to pay network fees, not the device
@@ -222,13 +223,14 @@ wallet or a production wallet. There are no SOL transfers, payments, escrow,
 or automatic airdrops. Do not commit private keys, seed phrases, or RPC
 credentials. `.env.example` contains public placeholders only; `.env` and
 local wallet/keypair files are ignored. The API does not automatically load
-dotenv files. For an interactive Bash configuration without a key in history:
+dotenv files. Set exactly one payer source; configuring both is rejected.
+Prefer the local keypair file without copying its contents into the environment:
 
 ```bash
 export SOLANA_RPC_URL=https://api.devnet.solana.com
 export SOLANA_CLUSTER=devnet
-read -r -s -p "Disposable Devnet payer keypair: " SOLANA_PAYER_PRIVATE_KEY
-export SOLANA_PAYER_PRIVATE_KEY
+unset SOLANA_PAYER_PRIVATE_KEY
+export SOLANA_PAYER_KEYPAIR_PATH="$HOME/.config/solana/badem-devnet-payer.json"
 ```
 
 The original BADEM admin/device/node settings are still required. Ingestion

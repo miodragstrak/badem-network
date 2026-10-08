@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
+from pathlib import Path
 import time
 
 import httpx
@@ -87,10 +88,17 @@ class SolanaAnchorService:
     def from_environment(cls):
         rpc_url = os.getenv("SOLANA_RPC_URL", "")
         private_key = os.getenv("SOLANA_PAYER_PRIVATE_KEY", "")
-        if not rpc_url or not private_key:
-            raise AnchorConfigurationError("Set SOLANA_RPC_URL and SOLANA_PAYER_PRIVATE_KEY")
+        keypair_path = os.getenv("SOLANA_PAYER_KEYPAIR_PATH", "")
+        if not rpc_url or not (private_key or keypair_path):
+            raise AnchorConfigurationError(
+                "Set SOLANA_RPC_URL and either SOLANA_PAYER_KEYPAIR_PATH or SOLANA_PAYER_PRIVATE_KEY"
+            )
+        if private_key and keypair_path:
+            raise AnchorConfigurationError("Set only one of SOLANA_PAYER_KEYPAIR_PATH and SOLANA_PAYER_PRIVATE_KEY")
         try:
-            if private_key.lstrip().startswith("["):
+            if keypair_path:
+                private_key = Path(keypair_path).expanduser().read_text(encoding="utf-8")
+            if keypair_path or private_key.lstrip().startswith("["):
                 values = json.loads(private_key)
                 if not isinstance(values, list) or len(values) != 64 or any(
                     type(value) is not int or not 0 <= value <= 255 for value in values
@@ -99,7 +107,11 @@ class SolanaAnchorService:
                 payer = Keypair.from_bytes(bytes(values))
             else:
                 payer = Keypair.from_base58_string(private_key)
-        except (ValueError, TypeError):
+        except (OSError, UnicodeError, ValueError, TypeError):
+            if keypair_path:
+                raise AnchorConfigurationError(
+                    "SOLANA_PAYER_KEYPAIR_PATH must point to a readable JSON 64-byte Solana keypair"
+                ) from None
             raise AnchorConfigurationError(
                 "SOLANA_PAYER_PRIVATE_KEY must be a Base58 or JSON 64-byte Solana keypair"
             ) from None

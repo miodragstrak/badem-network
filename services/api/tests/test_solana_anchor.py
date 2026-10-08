@@ -27,7 +27,7 @@ ADMIN = {"X-Admin-Key": "admin"}
 
 @pytest.fixture(autouse=True)
 def isolate_environment_and_network(monkeypatch):
-    for name in ("SOLANA_RPC_URL", "SOLANA_PAYER_PRIVATE_KEY", "SOLANA_CLUSTER"):
+    for name in ("SOLANA_RPC_URL", "SOLANA_PAYER_PRIVATE_KEY", "SOLANA_PAYER_KEYPAIR_PATH", "SOLANA_CLUSTER"):
         monkeypatch.delenv(name, raising=False)
 
     def block_network(*args, **kwargs):
@@ -384,6 +384,43 @@ def test_environment_payer_formats(monkeypatch, encoding):
     monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.invalid")
     monkeypatch.setenv("SOLANA_PAYER_PRIVATE_KEY", value)
     assert SolanaAnchorService.from_environment().payer.pubkey() == payer.pubkey()
+
+
+@pytest.mark.parametrize("use_home", [False, True])
+def test_environment_keypair_file(monkeypatch, tmp_path, use_home):
+    payer = Keypair()
+    path = tmp_path / "payer.json"
+    path.write_text(json.dumps(list(bytes(payer))), encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.invalid")
+    monkeypatch.setenv("SOLANA_PAYER_KEYPAIR_PATH", "~/payer.json" if use_home else str(path))
+    assert SolanaAnchorService.from_environment().payer.pubkey() == payer.pubkey()
+
+
+@pytest.mark.parametrize("content", ["not-json", "[1,2,3]", "[true]", "{}"])
+def test_invalid_keypair_file_is_rejected_without_printing_contents(monkeypatch, tmp_path, content):
+    path = tmp_path / "invalid-payer.json"
+    path.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.invalid")
+    monkeypatch.setenv("SOLANA_PAYER_KEYPAIR_PATH", str(path))
+    with pytest.raises(AnchorConfigurationError) as error:
+        SolanaAnchorService.from_environment()
+    assert content not in str(error.value)
+
+
+def test_unreadable_keypair_file_has_a_safe_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.invalid")
+    monkeypatch.setenv("SOLANA_PAYER_KEYPAIR_PATH", str(tmp_path / "missing-payer.json"))
+    with pytest.raises(AnchorConfigurationError, match="readable JSON"):
+        SolanaAnchorService.from_environment()
+
+
+def test_multiple_payer_sources_are_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.invalid")
+    monkeypatch.setenv("SOLANA_PAYER_PRIVATE_KEY", str(Keypair()))
+    monkeypatch.setenv("SOLANA_PAYER_KEYPAIR_PATH", str(tmp_path / "payer.json"))
+    with pytest.raises(AnchorConfigurationError, match="only one"):
+        SolanaAnchorService.from_environment()
 
 
 @pytest.mark.parametrize("value", ["not-a-private-key", "[1,2,3]", "[true]", "{bad-json"])
