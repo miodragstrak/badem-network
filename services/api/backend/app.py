@@ -1,8 +1,4 @@
-"""First vertical slice: jobs and authenticated machine events.
-
-This module deliberately does not claim that a machine is connected or that an
-onchain proof exists. Buyer signing and Solana publishing are separate steps.
-"""
+"""Jobs, authenticated machine events, verified device proofs and Devnet anchoring."""
 
 from __future__ import annotations
 
@@ -21,6 +17,10 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.proofs import ProductionProof, canonical_message, registered_public_key
+from backend.solana_anchor import (
+    AnchorConfigurationError, AnchorFailedError, AnchorPendingError, AnchorRPCError,
+    PreparedAnchor, SolanaAnchorService, anchor_hash, explorer_url,
+)
 
 
 class NewJob(BaseModel):
@@ -73,12 +73,25 @@ CREATE TABLE IF NOT EXISTS production_proofs (
     received_at INTEGER NOT NULL,
     UNIQUE(node_id, job_id, event)
 );
+CREATE TABLE IF NOT EXISTS proof_anchors (
+    proof_id TEXT PRIMARY KEY REFERENCES production_proofs(proof_id),
+    anchor_hash TEXT NOT NULL,
+    transaction_signature TEXT NOT NULL UNIQUE,
+    cluster TEXT NOT NULL CHECK(cluster = 'devnet'),
+    status TEXT NOT NULL CHECK(status IN ('PENDING', 'ANCHORED', 'FAILED')),
+    signed_transaction TEXT NOT NULL,
+    last_valid_block_height INTEGER NOT NULL,
+    anchored_at INTEGER,
+    CHECK((status = 'ANCHORED' AND anchored_at IS NOT NULL) OR
+          (status != 'ANCHORED' AND anchored_at IS NULL))
+);
 """
 
 
 def create_app(db_path: str | None = None, admin_key: str | None = None,
                device_id: str | None = None, device_secret: str | None = None,
-               node_id: str | None = None, node_public_key: str | None = None) -> FastAPI:
+               node_id: str | None = None, node_public_key: str | None = None,
+               anchor_service: SolanaAnchorService | None = None) -> FastAPI:
     db_path = db_path or os.getenv("BADEM_DB_PATH", "badem.db")
     admin_key = admin_key or os.getenv("BADEM_ADMIN_KEY", "")
     device_id = device_id or os.getenv("BADEM_DEVICE_ID", "")
@@ -145,7 +158,8 @@ def create_app(db_path: str | None = None, admin_key: str | None = None,
                 "FROM machine_events WHERE job_id=? ORDER BY sequence", (job_id,)
             ).fetchall()
         return {"job": dict(job), "events": [dict(event) for event in events],
-                "buyer_confirmation": "NOT_IMPLEMENTED", "chain": "NOT_CONNECTED"}
+                "buyer_confirmation": "NOT_IMPLEMENTED",
+                "chain": "SOLANA_DEVNET" if job["status"] == "PROOF_ANCHORED" else "NOT_CONNECTED"}
 
     @app.post("/machine-events", status_code=201)
     async def machine_event(request: Request, x_device_id: str | None = Header(default=None),
@@ -237,5 +251,113 @@ def create_app(db_path: str | None = None, admin_key: str | None = None,
         return {"proof_id": proof_id, "node_id": proof.node_id, "job_id": proof.job_id,
                 "status": "PROOF_RECEIVED", "signature_verified": True,
                 "buyer_confirmation": "NOT_IMPLEMENTED", "chain": "NOT_CONNECTED"}
+
+    def verified_stored_proof(connection, proof_id):
+        row = connection.execute("SELECT * FROM production_proofs WHERE proof_id=?", (proof_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Proof not found")
+        try:
+            proof = ProductionProof(**{field: row[field] for field in ProductionProof.model_fields})
+            message = canonical_message(proof)
+            if expected_key is None or proof.node_id != node_id or not hmac.compare_digest(
+                bytes.fromhex(proof.public_key), expected_key.public_bytes_raw()
+            ) or row["canonical_message"] != message.decode("utf-8"):
+                raise ValueError
+            expected_key.verify(bytes.fromhex(proof.signature), message)
+        except (ValueError, InvalidSignature):
+            raise HTTPException(409, "Stored proof is not verified against the registered device") from None
+        job = connection.execute("SELECT * FROM jobs WHERE id=?", (proof.job_id,)).fetchone()
+        if job is None or job["machine_id"] != device_id:
+            raise HTTPException(409, "Stored proof's job does not match the registered machine")
+        return proof, job
+
+    def anchor_response(row):
+        anchored = row["status"] == "ANCHORED"
+        return {"proof_id": row["proof_id"], "anchor_hash": row["anchor_hash"],
+                "transaction_signature": row["transaction_signature"], "cluster": row["cluster"],
+                "anchored_at": row["anchored_at"], "status": row["status"],
+                "confirmation": "finalized" if anchored else None,
+                "explorer_url": explorer_url(row["transaction_signature"], row["cluster"]),
+                "chain": "SOLANA_DEVNET" if anchored else "NOT_CONFIRMED",
+                "buyer_confirmation": "NOT_IMPLEMENTED"}
+
+    @app.get("/api/proofs/{proof_id}/anchor")
+    def get_anchor(proof_id: str, x_admin_key: str | None = Header(default=None)):
+        require_admin(x_admin_key)
+        with db() as connection:
+            if not connection.execute("SELECT 1 FROM production_proofs WHERE proof_id=?", (proof_id,)).fetchone():
+                raise HTTPException(404, "Proof not found")
+            row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
+        if row is None:
+            return {"proof_id": proof_id, "status": "NOT_ANCHORED", "chain": "NOT_CONFIRMED"}
+        return anchor_response(row)
+
+    @app.post("/api/proofs/{proof_id}/anchor")
+    def anchor_proof(proof_id: str, x_admin_key: str | None = Header(default=None)):
+        require_admin(x_admin_key)
+        with db() as connection:
+            proof, job = verified_stored_proof(connection, proof_id)
+            if job["status"] not in {"PROOF_RECEIVED", "PROOF_ANCHORED"}:
+                raise HTTPException(409, "Job must have a verified production proof before anchoring")
+            digest = anchor_hash(proof)
+            row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
+        if row is not None and row["anchor_hash"] != digest:
+            raise HTTPException(409, "Stored production proof differs from its anchor commitment")
+        if row is not None and row["status"] == "ANCHORED":
+            return anchor_response(row)
+        if row is not None and row["status"] == "FAILED":
+            raise HTTPException(409, "Anchor failed or expired; operator reconciliation required")
+        try:
+            service = anchor_service or SolanaAnchorService.from_environment()
+        except AnchorConfigurationError as error:
+            raise HTTPException(503, str(error)) from None
+        if row is None:
+            try:
+                prepared = service.prepare(digest)
+            except AnchorRPCError as error:
+                raise HTTPException(502, str(error)) from None
+            # Commit signed bytes before any broadcast; a concurrent request must use the winner's bytes.
+            with db() as connection:
+                current, job = verified_stored_proof(connection, proof_id)
+                if anchor_hash(current) != digest:
+                    raise HTTPException(409, "Production proof changed during preparation")
+                row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
+                if row is None:
+                    if job["status"] != "PROOF_RECEIVED":
+                        raise HTTPException(409, "Job is not ready for anchoring")
+                    connection.execute(
+                        "INSERT INTO proof_anchors "
+                        "(proof_id,anchor_hash,transaction_signature,cluster,status,signed_transaction,last_valid_block_height) "
+                        "VALUES (?,?,?,?,'PENDING',?,?)",
+                        (proof_id, digest, prepared.transaction_signature, service.cluster,
+                         prepared.signed_transaction, prepared.last_valid_block_height),
+                    )
+                    row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
+        if row["status"] == "ANCHORED":
+            return anchor_response(row)
+        if row["status"] == "FAILED":
+            raise HTTPException(409, "Anchor failed or expired; operator reconciliation required")
+        prepared = PreparedAnchor(row["transaction_signature"], row["signed_transaction"], row["last_valid_block_height"])
+        try:
+            service.submit_and_confirm(prepared, digest)
+        except AnchorFailedError as error:
+            with db() as connection:
+                connection.execute("UPDATE proof_anchors SET status='FAILED' WHERE proof_id=? AND status='PENDING'", (proof_id,))
+            raise HTTPException(409, str(error)) from None
+        except AnchorRPCError as error:
+            raise HTTPException(502, str(error)) from None
+        except AnchorPendingError as error:
+            raise HTTPException(504, str(error)) from None
+        with db() as connection:
+            current, job = verified_stored_proof(connection, proof_id)
+            if anchor_hash(current) != digest or job["status"] not in {"PROOF_RECEIVED", "PROOF_ANCHORED"}:
+                raise HTTPException(409, "Production proof/job changed during confirmation")
+            connection.execute(
+                "UPDATE proof_anchors SET status='ANCHORED', anchored_at=COALESCE(anchored_at,?) WHERE proof_id=?",
+                (int(time.time()), proof_id),
+            )
+            connection.execute("UPDATE jobs SET status='PROOF_ANCHORED' WHERE id=?", (proof.job_id,))
+            row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
+        return anchor_response(row)
 
     return app
