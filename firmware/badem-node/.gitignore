@@ -18,6 +18,7 @@ arduino-cache/
 !.env.example
 secrets/
 secrets.*
+!secrets.example.h
 credentials.*
 *keypair*.json
 wallet*.json
