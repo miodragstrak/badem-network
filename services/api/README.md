@@ -50,6 +50,7 @@ The health endpoint does not probe RPC or claim any proof is on-chain.
 | `POST /api/proofs` | Verify and store a completion proof | Registered node Ed25519 signature |
 | `POST /api/proofs/{proof_id}/anchor` | Anchor/reconcile a verified proof on Devnet | `X-Admin-Key` |
 | `GET /api/proofs/{proof_id}/anchor` | Read the stored anchor receipt/status without RPC | `X-Admin-Key` |
+| `GET /api/demo/jobs/{job_id}` | Read one job with its latest proof and anchor receipt for the hackathon UI | `X-Admin-Key` |
 
 ## Run the Simulator
 

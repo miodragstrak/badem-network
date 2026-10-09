@@ -84,6 +84,27 @@ def test_valid_proof_is_persisted_and_changes_job_state(proof_setup):
         assert stored["received_at"] >= payload["timestamp"]
 
 
+def test_demo_endpoint_reports_verified_proof_without_creating_an_anchor(proof_setup):
+    client, key, db_path, job_id = proof_setup
+    payload = signed_proof(key, job_id)
+    accepted = client.post("/api/proofs", json=payload)
+    assert accepted.status_code == 201
+    response = client.get(f"/api/demo/jobs/{job_id}", headers={"X-Admin-Key": "admin"})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["job"]["status"] == "PROOF_RECEIVED"
+    assert result["proof"]["proof_id"] == accepted.json()["proof_id"]
+    for field in ("node_id", "job_id", "event", "timestamp", "proof_hash"):
+        assert result["proof"][field] == payload[field]
+    assert result["proof"]["received_at"] >= payload["timestamp"]
+    assert result["anchor"] == {
+        "proof_id": accepted.json()["proof_id"], "status": "NOT_ANCHORED", "chain": "NOT_CONFIRMED",
+    }
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM proof_anchors").fetchone()[0] == 0
+        assert connection.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "PROOF_RECEIVED"
+
+
 def test_invalid_signature_is_rejected_without_side_effects(proof_setup):
     _, key, _, job_id = proof_setup
     payload = signed_proof(key, job_id)

@@ -167,6 +167,37 @@ def test_valid_verified_proof_is_finalized_and_persisted(anchor_setup):
     assert client.get(f"/api/proofs/{proof_id}/anchor", headers=ADMIN).json() == receipt
 
 
+@pytest.mark.parametrize("status", ["ANCHORED", "PENDING", "FAILED"])
+def test_demo_endpoint_reads_stored_anchor_without_rpc_or_state_changes(anchor_setup, status):
+    client, rpc, _, key, db_path, job_id, proof_id, _ = anchor_setup
+    if status == "PENDING":
+        rpc.level = "confirmed"
+    elif status == "FAILED":
+        rpc.execution_error = {"InstructionError": [0, "InvalidInstructionData"]}
+    assert post_anchor(anchor_setup).status_code == {
+        "ANCHORED": 200, "PENDING": 504, "FAILED": 409,
+    }[status]
+    before = client.get(f"/jobs/{job_id}", headers=ADMIN).json()
+    receipt = client.get(f"/api/proofs/{proof_id}/anchor", headers=ADMIN).json()
+    stored = dict(read_anchor(anchor_setup))
+    calls = list(rpc.calls)
+    restarted = TestClient(create_app(str(db_path), "admin", "laser-01", "test-secret",
+        "BADEM-001", key.public_key().public_bytes_raw().hex()))
+    with restarted:
+        response = restarted.get(f"/api/demo/jobs/{job_id}", headers=ADMIN)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["job"] == before["job"]
+    assert result["proof"]["proof_id"] == proof_id
+    assert result["anchor"] == receipt
+    assert result["anchor"]["status"] == status
+    assert result["anchor"]["cluster"] == "devnet"
+    assert result["anchor"]["confirmation"] == ("finalized" if status == "ANCHORED" else None)
+    assert rpc.calls == calls
+    assert dict(read_anchor(anchor_setup)) == stored
+    assert client.get(f"/jobs/{job_id}", headers=ADMIN).json() == before
+
+
 def test_missing_proof_is_rejected_before_rpc(anchor_setup):
     client, rpc, *_ = anchor_setup
     assert client.post("/api/proofs/unknown/anchor", headers=ADMIN).status_code == 404

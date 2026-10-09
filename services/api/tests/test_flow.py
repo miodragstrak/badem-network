@@ -48,3 +48,33 @@ def test_duplicate_event_is_rejected(tmp_path):
     event_id = str(uuid.uuid4())
     assert signed_event(client, job_id, 1, "STARTED", event_id=event_id).status_code == 201
     assert signed_event(client, job_id, 1, "STARTED", event_id=event_id).status_code == 409
+
+
+def test_demo_endpoint_requires_admin_and_rejects_unknown_jobs(tmp_path):
+    with TestClient(create_app(str(tmp_path / "test.db"), "admin", "laser-01", "test-secret")) as client:
+        path = "/api/demo/jobs/unknown"
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"X-Admin-Key": "wrong"}).status_code == 401
+        assert client.get(path, headers={"X-Admin-Key": "admin"}).status_code == 404
+
+
+def test_demo_endpoint_reports_machine_events_without_changing_job_state(tmp_path):
+    with TestClient(create_app(str(tmp_path / "test.db"), "admin", "laser-01", "test-secret")) as client:
+        headers = {"X-Admin-Key": "admin"}
+        job_id = client.post("/jobs", headers=headers, json={
+            "title": "demo", "machine_id": "laser-01", "file_sha256": "a" * 64,
+        }).json()["job_id"]
+        for event, status in ((None, "CREATED"), ("STARTED", "RUNNING"), ("FINISHED", "AWAITING_BUYER")):
+            if event is not None:
+                assert signed_event(client, job_id, 1 if event == "STARTED" else 2, event).status_code == 201
+            before = client.get(f"/jobs/{job_id}", headers=headers).json()
+            response = client.get(f"/api/demo/jobs/{job_id}", headers=headers)
+            assert response.status_code == 200
+            result = response.json()
+            assert result["job"] == before["job"]
+            assert result["job"]["status"] == status
+            assert result["events"] == before["events"]
+            assert result["proof"] is None
+            assert result["anchor"] is None
+            assert result["buyer_confirmation"] == "NOT_IMPLEMENTED"
+            assert client.get(f"/jobs/{job_id}", headers=headers).json() == before

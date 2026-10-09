@@ -292,6 +292,40 @@ def create_app(db_path: str | None = None, admin_key: str | None = None,
             return {"proof_id": proof_id, "status": "NOT_ANCHORED", "chain": "NOT_CONFIRMED"}
         return anchor_response(row)
 
+    @app.get("/api/demo/jobs/{job_id}")
+    def get_demo_job_state(job_id: str, x_admin_key: str | None = Header(default=None)):
+        require_admin(x_admin_key)
+        with db() as connection:
+            job = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if job is None:
+                raise HTTPException(404, "Job not found")
+            events = connection.execute(
+                "SELECT event_id,sequence,event_type,observed_at,received_at,event_hash "
+                "FROM machine_events WHERE job_id=? ORDER BY sequence", (job_id,)
+            ).fetchall()
+            proof = connection.execute(
+                "SELECT proof_id,node_id,job_id,event,timestamp,proof_hash,received_at "
+                "FROM production_proofs WHERE job_id=? ORDER BY received_at DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            anchor = None
+            if proof is not None:
+                row = connection.execute(
+                    "SELECT * FROM proof_anchors WHERE proof_id=?", (proof["proof_id"],)
+                ).fetchone()
+                anchor = anchor_response(row) if row is not None else {
+                    "proof_id": proof["proof_id"],
+                    "status": "NOT_ANCHORED",
+                    "chain": "NOT_CONFIRMED",
+                }
+        return {
+            "job": dict(job),
+            "events": [dict(event) for event in events],
+            "proof": dict(proof) if proof is not None else None,
+            "anchor": anchor,
+            "buyer_confirmation": "NOT_IMPLEMENTED",
+        }
+
     @app.post("/api/proofs/{proof_id}/anchor")
     def anchor_proof(proof_id: str, x_admin_key: str | None = Header(default=None)):
         require_admin(x_admin_key)
