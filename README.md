@@ -11,7 +11,8 @@ Job → Machine RUNNING → COMPLETED → BADEM Node signed proof → Solana ver
 ```text
 badem-network/
 ├── apps/
-│   └── web/
+│   ├── web/
+│   └── landing/
 ├── services/
 │   └── api/
 ├── firmware/
@@ -24,6 +25,7 @@ badem-network/
 ```
 
 - `apps/web` - React/Vite web demo placeholder.
+- `apps/landing` - Independent public BADEM website for `badem.network`; local development on port 5174.
 - `services/api` - FastAPI backend placeholder.
 - `firmware/badem-node` - ESP32 BADEM node firmware placeholder.
 - `solana/program` - Solana program placeholder.
