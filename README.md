@@ -1,4 +1,4 @@
-# BADEM — AI-Based DePIN Manufacturing
+# BADEM - AI-Based DePIN Manufacturing
 
 BADEM turns existing CNC machines, laser cutters, 3D printers and other manufacturing equipment into verifiable production nodes.
 

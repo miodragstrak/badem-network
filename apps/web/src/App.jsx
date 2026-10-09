@@ -22,9 +22,9 @@ const LIVE_API_BASE_URL = import.meta.env.VITE_BADEM_API_URL || '/badem-api'
 
 const DEMO_JOB = {
   id: 'BADEM-JOB-0042',
-  request: '20 engraved wooden tags',
-  material: 'plywood',
-  process: 'laser engraving',
+  request: 'Engrave BADEM mark on plywood',
+  material: 'Plywood',
+  process: 'Laser engraving',
   machine: 'BADEM Node #001',
   controller: 'MKS DLC32 V2.1',
   fileSha256: '9aa5bc3d67891dcf797122cfa2fe9e4450f542e36faf630b5a5d79dd28fc4e08',
@@ -84,6 +84,7 @@ function buildRuntimeConfig() {
     proofId: params.get('proof_id') || import.meta.env.VITE_BADEM_PROOF_ID || '',
     nodeId: import.meta.env.VITE_BADEM_NODE_ID || '',
     proofHash: import.meta.env.VITE_BADEM_PROOF_HASH || '',
+    debugMode: params.get('mode') === 'debug',
     forceFallback: params.get('mode') === 'fallback' || params.get('demo') === 'fallback',
   }
 }
@@ -269,21 +270,25 @@ function BrandMark() {
   )
 }
 
-function SourcePill({ demoState, loading }) {
+function SourcePill({ demoState, loading, debugMode }) {
   const live = demoState.source === 'api'
+  const Icon = loading ? Loader2 : live ? Signal : debugMode ? WifiOff : BadgeCheck
+  const label = debugMode
+    ? (loading ? 'Checking API' : demoState.sourceLabel)
+    : (loading ? 'Loading proof' : live ? 'Live production proof' : 'Validated demo receipt')
 
   return (
-    <div className={`source-pill ${live ? 'live' : 'fallback'}`}>
-      {loading ? <Loader2 className="spin" /> : live ? <Signal /> : <WifiOff />}
+    <div className={`source-pill ${live ? 'live' : 'fallback'} ${debugMode ? '' : 'presentation'}`}>
+      <Icon className={loading ? 'spin' : undefined} />
       <span>
-        <strong>{loading ? 'Checking API' : demoState.sourceLabel}</strong>
-        <em>{demoState.sourceDetail}</em>
+        <strong>{label}</strong>
+        {debugMode ? <em>{demoState.sourceDetail}</em> : null}
       </span>
     </div>
   )
 }
 
-function JobOverview({ demoState, currentIndex }) {
+function JobOverview({ demoState, currentIndex, debugMode }) {
   const { job } = demoState
 
   return (
@@ -291,27 +296,38 @@ function JobOverview({ demoState, currentIndex }) {
       <div className="job-copy">
         <p className="kicker">Manufacturing request</p>
         <h1>BADEM-JOB-0042</h1>
-        <p className="intro">
-          One verified proof path for a physical laser job: request, node execution,
-          signed completion proof, backend verification, and Devnet anchoring.
-        </p>
+        <p className="job-support">Physical production verified by BADEM Node #001</p>
+        {debugMode ? (
+          <p className="intro">
+            One verified proof path for a physical laser job: request, node execution,
+            signed completion proof, backend verification, and Devnet anchoring.
+          </p>
+        ) : null}
       </div>
 
       <div className="job-visual">
-        <img src="/demo-assets/badem-wooden-tags.png" alt="BADEM engraved wooden tags demo batch" />
-        <div className="job-visual-badge">
-          <CheckCircle2 />
-          {STATE_SEQUENCE[currentIndex]?.label || 'READY'}
-        </div>
+        <img src="/demo-assets/badem-wooden-tags.png" alt="BADEM mark laser engraved on plywood" />
+        {debugMode ? (
+          <div className="job-visual-badge">
+            <CheckCircle2 />
+            {STATE_SEQUENCE[currentIndex]?.label || 'READY'}
+          </div>
+        ) : null}
       </div>
 
       <div className="job-spec-grid">
-        <Spec label="Request" value={job.request} />
+        <Spec label="Request" value={debugMode ? job.request : DEMO_JOB.request} />
         <Spec label="Material" value={job.material} />
         <Spec label="Process" value={job.process} />
-        <Spec label="Machine" value={job.machine} />
+        <Spec label="Machine" value={debugMode ? job.machine : DEMO_JOB.machine} />
         <Spec label="Controller" value={job.controller} />
-        <Spec label="Backend status" value={formatBackendStatus(demoState.backendStatus)} tone="strong" />
+        <Spec
+          label={debugMode ? 'Backend status' : 'Production status'}
+          value={debugMode || ['FAILED', 'ABORTED'].includes(demoState.backendStatus)
+            ? formatBackendStatus(demoState.backendStatus)
+            : STATE_SEQUENCE[currentIndex].label}
+          tone="strong"
+        />
       </div>
     </section>
   )
@@ -365,7 +381,7 @@ function ArchitecturePanel() {
     <section className="architecture-panel panel">
       <div className="section-heading">
         <p className="kicker">Architecture</p>
-        <h2>Machine -&gt; BADEM Node -&gt; Signed Proof -&gt; BADEM Verifier -&gt; Solana</h2>
+        <h2>Machine &rarr; BADEM Node &rarr; Signed Proof &rarr; BADEM Verifier &rarr; Solana</h2>
       </div>
 
       <div className="architecture-chain">
@@ -506,24 +522,26 @@ function App() {
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>
-        <SourcePill demoState={demoState} loading={loading} />
+        <SourcePill demoState={demoState} loading={loading} debugMode={config.debugMode} />
       </header>
 
       <div className="hero-grid">
-        <JobOverview demoState={demoState} currentIndex={currentIndex} />
+        <JobOverview demoState={demoState} currentIndex={currentIndex} debugMode={config.debugMode} />
         <StateProgress currentIndex={currentIndex} />
       </div>
 
-      <div className="detail-grid">
+      <div className={`detail-grid ${config.debugMode ? '' : 'presentation'}`}>
         <ArchitecturePanel />
         <ProofReceipt demoState={demoState} />
-        <BackendPanel demoState={demoState} loading={loading} onRefresh={refresh} />
+        {config.debugMode ? <BackendPanel demoState={demoState} loading={loading} onRefresh={refresh} /> : null}
       </div>
 
-      <footer className="demo-footer">
-        <Router />
-        <span>No wallet connection. No payments. No marketplace bidding. No machine control.</span>
-      </footer>
+      {config.debugMode ? (
+        <footer className="demo-footer">
+          <Router />
+          <span>No wallet connection. No payments. No marketplace bidding. No machine control.</span>
+        </footer>
+      ) : null}
     </main>
   )
 }
