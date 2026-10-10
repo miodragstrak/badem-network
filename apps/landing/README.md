@@ -69,13 +69,54 @@ deployment are not performed by this change.
 - The hardware gallery uses `/prototype/machine.jpeg`, `/prototype/controller.jpeg`
   and `/prototype/enclosure.jpeg`, without cropping. These photographs document
   hardware development, not completed-job evidence or a Solana transaction.
-- The interactive walkthrough runs entirely in the browser, without API/RPC calls
-  or machine control. Its completion and signature-verification steps are
-  illustrative; `/prototype/engraved-mark.png` is physical prototype-test output,
-  not evidence tied to a specific proof. The optional Explorer link is the exact
-  simulator transaction documented in `solana/README.md`, not a new anchor.
-- Hardware detail controls do not advance the walkthrough. Reset and unmount
-  cancel the active timer; reduced-motion preferences disable animations.
+- The six-step interactive walkthrough illustrates READY -> RUNNING -> COMPLETED
+  -> RECORD SIGNED -> SIGNATURE VERIFIED -> ANCHOR EXPLAINED. One stable-size
+  visual container holds the AI machine media for the first three steps and
+  the React/CSS BADEM Production Console for the digital steps. No separate
+  proof-flow diagram remains beneath the media. All images/video are uncropped;
+  a minimum container height keeps console text readable on narrower screens.
+- AI assets live in `public/walkthrough/`: `machine-ready.jpg`,
+  `machine-production.mp4` and `machine-completed.jpg`. They are illustrative,
+  not evidence of a physical run. The console retains a small, uncropped
+  completed-scene thumbnail, not the real prototype-output photo. The scene's
+  generic controller enclosure is not identified as actual BADEM Node hardware.
+- Production video plays once, muted and inline, without looping. Only its
+  `ended` event or explicit skip advances to completion, never a fixed timer.
+  Pause/resume and playback-error fallback are provided. Reduced-motion mode
+  uses static proof transitions and requires explicit play or skip for video.
+  A missing still image falls back to the ready scene with an explicit caveat;
+  reset retries the images. The right-hand step explanation sits directly above
+  the primary action; the visual and controls stack on mobile.
+- A persistent badge identifies the simulation and absence of live transactions.
+  The console illustrates a completion record with job, example
+  node identity, event and signature placeholder, then sequential checks for
+  registered device identity, job association and device signature. Signing
+  and checks are explicitly simulated, not physical output/quality validation.
+- The final step illustrates canonicalization, SHA-256 hashing, sending only
+  `anchor_hash` to a Solana Memo, and a descriptive illustrative receipt. No
+  cryptographic operations are performed and no realistic hash, signature,
+  timestamp, transaction ID or new Explorer URL is generated. No API/RPC calls,
+  wallet interactions, actual transactions, machine commands or job delivery.
+- `proof_hash` is the device-supplied evidence field; it is not `anchor_hash`.
+  Per `docs/proof-of-production.md` and `solana/README.md`, the real backend's
+  anchor canonical order is `BADEM_PROOF_ANCHOR_V1|node_id|job_id|event|timestamp|proof_hash|public_key|signature`.
+  SHA-256 commits to all seven verified fields, including the public key and
+  device signature. Only key/signature hex is lowercased; signed identifiers
+  and `proof_hash` text retain their original spelling. These are UTF-8 bytes
+  with no trailing newline. The console displays field names/placeholders only.
+  The full record stays off-chain; its hash is a reference for checking changes,
+  not an independent proof that physical production or buyer acceptance occurred.
+- Reset stops and rewinds the video, invalidates stale playback callbacks and
+  cancels active animations/action timers. Rapid and repeated-key actions are
+  guarded. Current-step progress, polite status announcements, keyboard controls
+  and visible focus states remain available throughout.
+- Real-photo controls are outside the AI scene and do not advance it.
+  `/prototype/engraved-mark.png` remains physical prototype-test output, with
+  its caveat: "This photograph is not linked to a specific proof record."
+- The final Explorer link, "View documented simulator transaction", is the exact
+  simulator Devnet transaction documented in `solana/README.md`. It is separate
+  from the AI scene; the walkthrough never submits a transaction. Physical ESP32
+  end-to-end validation is still pending, and Devnet can reset.
 - Proof copy describes event source and integrity, without claiming physical quality verification.
 - Solana references are Devnet demonstrations, not production permanence guarantees.
 - No fabricated partner logos, customer numbers, token claims or contact address.
