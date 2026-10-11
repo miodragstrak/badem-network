@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowRight, ArrowUpRight, Box, Check, CircleDashed, Cpu, Factory, FileText, Fingerprint, Hash, Image, Layers3, Pause, Play, RotateCcw, Server, ShieldCheck, SkipForward } from 'lucide-react'
+import { ArrowUpRight, Box, Check, CircleDashed, Cpu, Factory, Fingerprint, Image, Layers3, Pause, Play, RotateCcw, Server, ShieldCheck, SkipForward } from 'lucide-react'
 import './ProductionWalkthrough.css'
 
 // Recorded simulator validation, documented in solana/README.md (Milestone 03A).
@@ -52,6 +52,13 @@ const descriptions = {
   'ANCHOR EXPLAINED': 'A hash of the signed record can be anchored to Solana.',
 }
 const initialFlow = { index: 0, epoch: 0, busy: false, videoStatus: 'idle' }
+const recordFields = [
+  ['Job', 'Engrave BADEM mark on plywood'],
+  ['Node', 'BADEM Node example identity'],
+  ['Completion event', 'COMPLETED'],
+  ['proof_hash', 'Device evidence placeholder'],
+]
+const verificationChecks = ['Registered device identity', 'Job association', 'Device signature']
 const readyScene = '/walkthrough/machine-ready.jpg'
 const completedScene = '/walkthrough/machine-completed.jpg'
 const motionQuery = '(prefers-reduced-motion: reduce)'
@@ -62,53 +69,102 @@ function subscribeMotion(callback) {
 }
 const getReducedMotion = () => window.matchMedia(motionQuery).matches
 
+function ProductionRecordCard({ mode = 'signed', compact = false }) {
+  const isSigning = mode === 'signing'
+  return <article className={`console-record-card${compact ? ' compact' : ''}${isSigning ? ' is-signing' : ''}`} aria-label="Illustrative production record">
+    <div className="console-record-head">
+      <div><span>Production record</span><strong>Same completion record</strong></div>
+      <small>{isSigning ? 'Signing' : 'Signed'}</small>
+    </div>
+    <dl>
+      {recordFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+      <div><dt>Device signature</dt><dd>{isSigning ? 'Attaching illustrative seal' : 'Illustrative device signature attached'}</dd></div>
+    </dl>
+    <div className="console-seal" aria-label="Illustrative device signature">
+      <Fingerprint size={21} aria-hidden="true" />
+      <span>Illustrative device signature</span>
+    </div>
+  </article>
+}
+
 function ProductionConsole({ index, image, onImageError, onFinished }) {
-  const checks = ['Registered device identity', 'Job association', 'Device signature']
+  const phase = index === 3 ? 'Device signing' : index === 4 ? 'Backend verification' : 'Solana anchor reference'
   return <div className={`production-console console-step-${index}`} aria-label="BADEM Production Console, simulated">
     <header className="console-header">
-      <div><p>BADEM Production Console</p><span>{index === 3 ? 'Device signing' : index === 4 ? 'Backend verification' : 'Solana anchor reference'}</span></div>
-      <figure className="console-product">{image ? <img src={image} alt={image === completedScene ? 'Completed engraving in the AI-generated scene' : 'Ready-scene fallback, not completed output'} width="2728" height="1528" onError={onImageError} /> : <span>Scene unavailable</span>}<figcaption>AI-scene output</figcaption></figure>
+      <div className="console-header-copy"><p>BADEM Production Console</p><span>{phase}</span></div>
+      <span className="console-simulation-pill"><CircleDashed size={14} aria-hidden="true" />Simulation — no live transaction</span>
+      <figure className="console-product">{image ? <img src={image} alt={image === completedScene ? 'Completed engraving in the AI-generated scene' : 'Ready-scene fallback, not completed output'} width="2728" height="1528" onError={onImageError} /> : <span>Scene unavailable</span>}<figcaption>{image === completedScene ? 'Completed-product photo · illustrative' : 'Fallback scene · not completed output'}</figcaption></figure>
     </header>
     <div className="console-workspace" onAnimationEnd={event => {
       // Only the final cue unlocks the action; earlier sequential cues may bubble here.
       if (event.target.dataset.consoleFinish === 'true') onFinished()
     }}>
-      {index === 3 && <div className="console-signing">
-        <div className="console-section-title"><Cpu size={20} aria-hidden="true" /><h5>BADEM Node · example identity</h5></div>
-        <article className="console-record" aria-label="Illustrative production record">
-          <div className="console-record-title"><FileText size={18} aria-hidden="true" /><strong>Production completion record</strong><Fingerprint className="console-signing-mark" size={22} aria-hidden="true" /></div>
-          <dl>
-            <div><dt>Job</dt><dd>BADEM engraving</dd></div>
-            <div><dt>Node identity</dt><dd>BADEM-001 (example)</dd></div>
-            <div><dt>Completion event</dt><dd>COMPLETED</dd></div>
-            <div><dt>Device signature</dt><dd>Illustrative placeholder</dd></div>
-          </dl>
-        </article>
-        <div className="console-signature-result" data-console-finish="true"><Fingerprint size={30} aria-hidden="true" /><div><strong>Simulated signature attached</strong><p>Device-key signing is illustrated, not performed.</p></div></div>
+      {index === 3 && <div className="console-scene console-signing-scene">
+        <svg className="console-paths" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <path className="console-path console-path-main" d="M18 54 C30 42 36 42 46 50" />
+          <path className="console-path console-path-soft" d="M28 68 C39 75 51 76 64 65" />
+        </svg>
+        <aside className="console-node-card" aria-label="BADEM Node">
+          <span><Cpu size={25} aria-hidden="true" /></span>
+          <strong>BADEM Node</strong>
+          <small>Example device identity</small>
+          <em>Completion-event source</em>
+        </aside>
+        <div className="console-record-zone">
+          <ProductionRecordCard mode="signing" />
+        </div>
+        <p className="console-signature-result" data-console-finish="true"><Fingerprint size={20} aria-hidden="true" />Seal attached to the record. Device-key signing is illustrated, not performed.</p>
         <p className="console-footnote">The pictured enclosure is not a validated BADEM Node.</p>
       </div>}
-      {index === 4 && <div className="console-verification">
-        <div className="console-section-title"><Server size={20} aria-hidden="true" /><h5>Backend · illustrative checks</h5></div>
-        <ol className="console-checks">{checks.map((label, index) => <li key={label} style={{ '--cue': index }}><Check size={19} aria-hidden="true" /><span>{label}</span><small>Illustrative</small></li>)}</ol>
-        <p className="console-check-result" data-console-finish="true"><ShieldCheck size={19} aria-hidden="true" />Simulated checks complete. No verification was performed.</p>
-        <p className="console-quality-limit">A device signature establishes the reported event's source and integrity, not physical output or product quality.</p>
+      {index === 4 && <div className="console-scene console-verification-scene">
+        <svg className="console-paths" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <path className="console-path console-path-main" d="M42 37 C54 32 61 24 72 20" />
+          <path className="console-path console-path-main second" d="M43 50 C55 50 62 50 74 50" />
+          <path className="console-path console-path-main third" d="M42 63 C54 68 61 77 72 82" />
+        </svg>
+        <div className="console-record-zone">
+          <span className="console-area-label">Record entering backend</span>
+          <ProductionRecordCard mode="verified" />
+        </div>
+        <section className="console-backend-card" aria-label="Backend verification checks">
+          <div className="console-backend-head"><Server size={21} aria-hidden="true" /><div><strong>Backend verification</strong><small>Sequential illustrative checks</small></div></div>
+          <ol className="console-checks">
+            {verificationChecks.map((label, checkIndex) => <li key={label} style={{ '--cue': checkIndex }}><Check size={18} aria-hidden="true" /><span>{label}</span></li>)}
+          </ol>
+          <p className="console-check-result" data-console-finish="true"><ShieldCheck size={18} aria-hidden="true" />Checks complete in the simulation.</p>
+        </section>
+        <p className="console-quality-limit">Signature verification concerns the reported event's source and integrity, not physical product quality.</p>
       </div>}
-      {index === 5 && <div className="console-anchoring">
-        <div className="console-canonical">
-          <h5><FileText size={17} aria-hidden="true" />Canonical signed record</h5>
+      {index === 5 && <div className="console-scene console-anchor-scene">
+        <section className="console-offchain-zone" aria-label="Off-chain record area">
+          <span className="console-area-label">Off-chain record</span>
+          <ProductionRecordCard mode="anchored" compact />
+        </section>
+        <div className="console-anchor-corridor" aria-hidden="true">
+          <svg viewBox="0 0 220 120" focusable="false">
+            <path className="console-path console-path-main" d="M10 62 C68 20 142 102 210 56" />
+          </svg>
+          <div className="console-anchor-token"><Fingerprint size={18} /><span>Anchor hash</span></div>
+        </div>
+        <section className="console-memo-zone" aria-label="Solana Memo area">
+          <span className="console-area-label">Solana Memo</span>
+          <Layers3 size={26} aria-hidden="true" />
+          <strong>Memo reference</strong>
+          <code>BADEM:proof:v1:sha256:&lt;anchor_hash&gt;</code>
+          <small>Only the anchor hash reference moves here.</small>
+        </section>
+        <div className="console-anchor-preview" data-console-finish="true">
+          <h5>Illustrative anchor preview</h5>
+          <dl><div><dt>Anchor hash</dt><dd>Anchor hash placeholder</dd></div><div><dt>Transaction</dt><dd>Not created</dd></div><div><dt>Status</dt><dd>No transaction was submitted</dd></div></dl>
+        </div>
+        <p className="console-offchain">The full record stays off-chain. Its hash can be anchored to Solana as a reference for checking whether the record has changed.</p>
+        <details className="console-technical">
+          <summary>Technical details</summary>
+          <p>Canonical anchor format:</p>
           <code>BADEM_PROOF_ANCHOR_V1|node_id|job_id|event|timestamp|proof_hash|public_key|signature</code>
-          <p><code>proof_hash</code> is the device-supplied evidence field inside this record.</p>
-        </div>
-        <div className="console-anchor-transfer">
-          <div className="console-hash"><Hash size={20} aria-hidden="true" /><span><strong>SHA-256 → anchor_hash</strong><small>&lt;anchor hash&gt;</small></span></div>
-          <ArrowRight className="console-send-arrow" size={23} aria-hidden="true" />
-          <div className="console-solana"><Layers3 size={20} aria-hidden="true" /><span><strong>Solana Memo</strong><small>Only the anchor hash</small></span></div>
-        </div>
-        <div className="console-receipt" data-console-finish="true">
-          <h5>Illustrative anchor receipt</h5>
-          <dl><div><dt>Anchor hash</dt><dd>&lt;anchor hash&gt;</dd></div><div><dt>Transaction</dt><dd>Not created</dd></div><div><dt>Status</dt><dd>Simulated · not submitted</dd></div></dl>
-        </div>
-        <p className="console-offchain">The full record stays off-chain. Its hash provides a reference for checking whether the record has changed.</p>
+          <p><code>proof_hash</code> is the device-supplied evidence field inside the verified production proof. <code>anchor_hash</code> is the SHA-256 digest of the canonical anchor bytes and commits to all seven verified fields, including the public key and device signature.</p>
+          <p>The backend lowercases only public-key and signature hex for the anchor commitment; signed identifiers and <code>proof_hash</code> spelling are preserved. The device-signing message is unchanged.</p>
+        </details>
       </div>}
     </div>
   </div>
@@ -259,7 +315,7 @@ export default function ProductionWalkthrough() {
     <div className="walkthrough-layout">
       <div className="walkthrough-media">
         <figure className="walkthrough-figure">
-          <div className="walkthrough-scene">
+          <div className={`walkthrough-scene${flow.index >= 3 ? ' walkthrough-scene-console' : ''}`}>
             {flow.index < 3 ? <>
               {displayedScene ? <img className="walkthrough-machine-image" src={displayedScene} alt={displayedScene === readyScene ? 'AI-generated laser machine scene with a blank plywood workpiece' : 'AI-generated laser machine scene after the illustrative engraving'} width="2728" height="1528" onError={() => setFailedScenes(previous => previous.includes(displayedScene) ? previous : [...previous, displayedScene])} /> : <p className="walkthrough-scene-fallback">Machine scene unavailable.</p>}
               {stage === 'RUNNING' && <video key={flow.epoch} ref={videoRef} src="/walkthrough/machine-production.mp4" poster={readyScene} muted playsInline preload="auto" aria-label="AI-generated engraving animation" hidden={videoFailed} onPlaying={event => videoStatus(event, 'playing')} onWaiting={event => videoStatus(event, 'loading')} onPause={event => videoStatus(event, 'paused')} onError={videoError} onEnded={videoEnded} />}

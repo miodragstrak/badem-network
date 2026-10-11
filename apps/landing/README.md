@@ -70,11 +70,12 @@ deployment are not performed by this change.
   and `/prototype/enclosure.jpeg`, without cropping. These photographs document
   hardware development, not completed-job evidence or a Solana transaction.
 - The six-step interactive walkthrough illustrates READY -> RUNNING -> COMPLETED
-  -> RECORD SIGNED -> SIGNATURE VERIFIED -> ANCHOR EXPLAINED. One stable-size
-  visual container holds the AI machine media for the first three steps and
-  the React/CSS BADEM Production Console for the digital steps. No separate
-  proof-flow diagram remains beneath the media. All images/video are uncropped;
-  a minimum container height keeps console text readable on narrower screens.
+  -> RECORD SIGNED -> SIGNATURE VERIFIED -> ANCHOR EXPLAINED. The visual stage
+  holds the AI machine media for the first three steps and a larger React/CSS
+  BADEM Production Console for the digital steps. No separate proof-flow diagram
+  remains beneath the media. All images/video are uncropped; the console stage
+  reserves enough responsive height to keep record text readable on narrower
+  screens without horizontal overflow.
 - AI assets live in `public/walkthrough/`: `machine-ready.jpg`,
   `machine-production.mp4` and `machine-completed.jpg`. They are illustrative,
   not evidence of a physical run. The console retains a small, uncropped
@@ -88,24 +89,29 @@ deployment are not performed by this change.
   reset retries the images. The right-hand step explanation sits directly above
   the primary action; the visual and controls stack on mobile.
 - A persistent badge identifies the simulation and absence of live transactions.
-  The console illustrates a completion record with job, example
-  node identity, event and signature placeholder, then sequential checks for
-  registered device identity, job association and device signature. Signing
-  and checks are explicitly simulated, not physical output/quality validation.
-- The final step illustrates canonicalization, SHA-256 hashing, sending only
-  `anchor_hash` to a Solana Memo, and a descriptive illustrative receipt. No
-  cryptographic operations are performed and no realistic hash, signature,
-  timestamp, transaction ID or new Explorer URL is generated. No API/RPC calls,
-  wallet interactions, actual transactions, machine commands or job delivery.
+  The console keeps the same production-record card through signing, backend
+  verification and anchoring. Signing shows a clearly labeled BADEM Node and an
+  illustrative device-signature seal attaching to the record. Verification moves
+  that same record into a backend scene and activates checks for registered
+  device identity, job association and device signature. Signing and checks are
+  explicitly simulated, not physical output/quality validation.
+- The final step keeps the signed record in an off-chain record area, moves a
+  separate `Anchor hash` token toward a Solana Memo area, and finishes with an
+  illustrative anchor preview. No cryptographic operations are performed and no
+  realistic hash, signature, timestamp, transaction ID or new Explorer URL is
+  generated. No API/RPC calls, wallet interactions, actual transactions, machine
+  commands or job delivery.
 - `proof_hash` is the device-supplied evidence field; it is not `anchor_hash`.
   Per `docs/proof-of-production.md` and `solana/README.md`, the real backend's
   anchor canonical order is `BADEM_PROOF_ANCHOR_V1|node_id|job_id|event|timestamp|proof_hash|public_key|signature`.
   SHA-256 commits to all seven verified fields, including the public key and
   device signature. Only key/signature hex is lowercased; signed identifiers
   and `proof_hash` text retain their original spelling. These are UTF-8 bytes
-  with no trailing newline. The console displays field names/placeholders only.
-  The full record stays off-chain; its hash is a reference for checking changes,
-  not an independent proof that physical production or buyer acceptance occurred.
+  with no trailing newline. The console displays field names/placeholders only,
+  and keeps the canonical anchor format and `proof_hash`/`anchor_hash`
+  distinction inside an accessible Technical details disclosure. The full record
+  stays off-chain; its hash is a reference for checking changes, not an
+  independent proof that physical production or buyer acceptance occurred.
 - Reset stops and rewinds the video, invalidates stale playback callbacks and
   cancels active animations/action timers. Rapid and repeated-key actions are
   guarded. Current-step progress, polite status announcements, keyboard controls
