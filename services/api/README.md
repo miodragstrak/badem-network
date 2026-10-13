@@ -564,6 +564,62 @@ existing persistent profile model has no automatic expiry or attribution UI;
 do not assume it meets production retention/display rules merely because raw
 payloads are not stored. See [Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies).
 
+### Multilingual Public Signals (Milestone 02C)
+
+`discovery/signals.py` extracts English and Serbian Latin public signals from
+the existing display name and primary/type values. Case folding, Unicode NFKD
+normalization, combining-mark removal and punctuation/underscore tokenization
+make Serbian Latin diacritics match ASCII equivalents (`secenje`, `stampa`,
+`sperploca`; D-with-stroke becomes `dj`).
+Matches use whole tokens/phrases, not fuzzy matching or company-name lookups.
+Bounded word forms allow graver/engraver suffix compounds and wood-derived
+forms such as woodworking, woodcraft and wooding; unrelated words such as
+graverobber, Hollywood and plasticity do not match.
+
+Process families are laser engraving, laser cutting, CNC machining (the existing
+canonical `cnc_milling`), 3D printing and prototyping. Material families cover
+wood/plywood, metal/steel/aluminum and plastic/acrylic/PLA/ABS. Specific material
+words may support their broader family, but generic metal/plastic does not
+establish a specific alloy/polymer. The existing coarse wood/plywood match is
+retained. Location/address context contributes only to location scoring, never
+to manufacturing process/material evidence. Google location comparisons also
+normalize Latin diacritics while still rejecting conflicting countries.
+
+For Google profiles, explicit process phrases can earn 40 process and 10
+specialization points. Engraving/milling-only terms earn 60% of those categories;
+generic CNC earns 80%. A generic laser-only signal earns 25% process credit and
+50% specialization credit. Multiple requested processes receive proportional
+credit; duplicate terms/sources do not accumulate points. Explicit laser
+engraving/cutting does not also imply the other laser process. Category maxima,
+fit thresholds, quantity/capacity caveats and the API response structure are
+unchanged. Mock fixtures retain their existing extraction, scores and reasoning.
+
+Inferred capabilities retain `capability`, `confidence` and `evidence`, now
+including matched normalized phrases and their name/type source. Confidence is
+a rule-based specificity heuristic, not a verified capability or calibrated
+probability: explicit phrases use .75; weaker engraving/milling .55, CNC .60,
+and generic laser .30. Stronger repeated evidence wins rather than stacking
+confidence. Profile confidence remains `low`/`medium`; equipment/activity fields
+remain zero for the current Google provider. No new Google fields, enrichment,
+network calls or changes to provider limits are introduced by extraction.
+
+Deterministic name fixtures below use generic place types, Belgrade/RS, and a
+laser-engraving/plywood request. These are unit-test examples, not another live
+Google validation:
+
+| Public name | Previous score | New score |
+| --- | --- | --- |
+| Penda lasersko graviranje | 10 | 60 |
+| graver doo | 10 | 40 |
+| Tenzor Laser | 10 | 25 |
+| Laser Print - Reklamni materijal i brendiranje | 10 | 25 |
+| Wooding Studio | 10 | 30 |
+| General repair workshop | 10 | 10 |
+
+All results remain `PUBLIC_DATA_ONLY` with the exact existing disclaimer.
+Stored results are snapshots: rerun the existing authenticated discovery POST
+to rebuild profiles and rankings; GET does not rescore or contact Google.
+
 ### Try Google Discovery Locally
 
 From `services/api`, after the existing Local Setup environment is configured:

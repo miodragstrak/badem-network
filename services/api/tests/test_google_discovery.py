@@ -101,12 +101,12 @@ def test_google_normalization_uses_returned_public_fields_only():
     assert partner.public_activity is False
     profile = build_profile(partner)
     assert profile["is_mock"] is False
-    assert profile["inferred_capabilities"] == [{"capability": "laser_engraving", "confidence": .5,
-                                               "evidence": ["Google Places business name"]}]
+    assert profile["inferred_capabilities"] == [{"capability": "laser_engraving", "confidence": .75,
+        "evidence": ["business name contains 'laser engraving'", "business name contains 'engraving'"]}]
     score = score_profile(SPECIFICATION, profile)
     assert score.score_breakdown == {"process_match": 40, "material_signal": 20, "equipment_signal": 0,
-        "business_specialization": 0, "location_suitability": 10, "public_activity_signal": 0}
-    assert profile["confidence"] == "low"
+        "business_specialization": 10, "location_suitability": 10, "public_activity_signal": 0}
+    assert profile["confidence"] == "medium"
     assert all("mock" not in reason.casefold() for reason in score.reasoning)
 
 
@@ -274,7 +274,7 @@ def test_google_api_results_are_ranked_public_only_and_do_not_store_raw_payloads
     assert result["provider"] == models.GOOGLE_SOURCE
     assert result["status"] == "DISCOVERY_COMPLETE"
     assert len(calls) == 3
-    assert [candidate["fit_score"] for candidate in result["candidates"]] == [70, 5]
+    assert [candidate["fit_score"] for candidate in result["candidates"]] == [80, 5]
     for candidate, place_id in zip(result["candidates"], ("test-place-1", "test-place-2")):
         assert candidate["source"] == models.GOOGLE_SOURCE
         assert candidate["is_mock"] is False
@@ -378,3 +378,51 @@ def test_google_auth_and_missing_specification_do_not_call_upstream(google_setup
     assert discover(client, request_id).status_code == 409
     assert discover(client, "unknown").status_code == 404
     assert calls == []
+
+
+def test_multilingual_google_candidates_rank_by_signals_with_exact_disclaimer_and_persisted_evidence(google_setup):
+    client, db_path, payload, calls = google_setup
+    names = {"explicit": "Penda lasersko graviranje", "laser": "Tenzor Laser",
+             "wood": "Wooding Studio", "print": "Laser Print - Reklamni materijal i brendiranje",
+             "unrelated": "General repair workshop"}
+    payload["places"] = [listing(place_id, name) for place_id, name in names.items()]
+    request_id = create_request(client)
+    specify(client, request_id)
+    response = discover(client, request_id)
+    assert response.status_code == 200, response.text
+    candidates = response.json()["candidates"]
+    assert len(candidates) == 5
+    assert len(calls) == 3
+    assert candidates[0]["name"] == names["explicit"]
+    assert candidates[-1]["name"] == names["unrelated"]
+    by_name = {candidate["name"]: candidate for candidate in candidates}
+    explicit = by_name[names["explicit"]]
+    generic = by_name[names["laser"]]
+    assert explicit["fit_score"] > generic["fit_score"] > 10
+    assert explicit["score_breakdown"]["process_match"] > generic["score_breakdown"]["process_match"] > 0
+    assert explicit["score_breakdown"]["business_specialization"] > 0
+    assert by_name[names["wood"]]["score_breakdown"]["material_signal"] > 0
+    assert by_name[names["print"]]["score_breakdown"]["business_specialization"] > 0
+    for candidate in candidates:
+        assert candidate["disclaimer"] == models.DISCLAIMER
+        assert candidate["verification_status"] == models.VERIFICATION_STATUS
+        assert candidate["source"] == models.GOOGLE_SOURCE
+        assert candidate["is_mock"] is False
+        assert candidate["score_breakdown"]["equipment_signal"] == 0
+        assert candidate["score_breakdown"]["public_activity_signal"] == 0
+        detail = client.get(f"/api/partner-candidates/{candidate['candidate_id']}", headers=ADMIN).json()
+        assert detail["source_place_id"] in names
+        assert detail["partner_profile"]["disclaimer"] == models.DISCLAIMER
+        if candidate["name"] == names["explicit"]:
+            capability = detail["partner_profile"]["inferred_capabilities"][0]
+            assert "business name contains 'lasersko graviranje'" in capability["evidence"]
+            assert capability["confidence"] == .75
+        wording = json.dumps(detail).casefold()
+        assert all(claim not in wording for claim in (
+            "can perform", "has laser equipment", "supports plywood", "verified supplier", "can manufacture"))
+    with sqlite3.connect(db_path) as connection:
+        stored = " ".join(row[0] for row in connection.execute("SELECT profile_json FROM public_capacity_profiles"))
+        assert "lasersko graviranje" in stored
+        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (5,)
+    assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == response.json()
+    assert discover(client, request_id).json() == response.json()

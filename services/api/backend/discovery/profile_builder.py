@@ -2,7 +2,8 @@
 
 import re
 
-from backend.discovery.models import DISCLAIMER, MOCK_SOURCE, VERIFICATION_STATUS, PublicPartnerData
+from backend.discovery.models import DISCLAIMER, GOOGLE_SOURCE, MOCK_SOURCE, VERIFICATION_STATUS, PublicPartnerData
+from backend.discovery.signals import extract_public_signals
 
 
 def normalize_term(value: str) -> str:
@@ -41,15 +42,23 @@ def build_profile(partner: PublicPartnerData) -> dict:
         capabilities.append({"capability": capability, "confidence": round(min(.86, .38 + .12 * len(evidence)), 2),
                              "evidence": evidence})
     confidence = "medium" if any(item["confidence"] >= .65 for item in capabilities) else "low"
+    material_signals = list(partner.materials)
+    laser_related_name = "laser" in normalized[name_source]
+    if partner.source == GOOGLE_SOURCE:
+        public_signals = extract_public_signals(partner.display_name, partner.specializations)
+        capabilities = public_signals.capabilities()
+        confidence = "medium" if any(item["confidence"] >= .65 for item in capabilities) else "low"
+        material_signals = sorted(set(material_signals) | public_signals.materials)
+        laser_related_name = public_signals.laser_related_name
     return {
         "display_name": partner.display_name,
         "location_summary": ", ".join(value for value in (partner.city, partner.country) if value) or "Location unavailable",
         "location": {"city": partner.city, "country": partner.country},
         "signals": {
-            "laser_related_name": "laser" in normalized[name_source],
+            "laser_related_name": laser_related_name,
             "website_signal": bool(partner.website_keywords),
             "review_keyword_signals": list(partner.review_keywords),
-            "material_signals": list(partner.materials),
+            "material_signals": material_signals,
             "equipment_signals": list(partner.equipment),
             "specialization_signals": list(partner.specializations),
             "public_activity_signal": partner.public_activity,

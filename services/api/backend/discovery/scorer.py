@@ -2,7 +2,11 @@
 
 from dataclasses import dataclass
 
+from backend.discovery.models import GOOGLE_SOURCE
 from backend.discovery.profile_builder import normalize_term
+from backend.discovery.signals import (
+    MATERIAL_FAMILIES, canonical_material, canonical_process, extract_public_signals, normalize_text,
+)
 
 
 WEIGHTS = {"process_match": 40, "material_signal": 20, "equipment_signal": 15,
@@ -41,25 +45,41 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
     material_signals = {normalize_term(term) for term in signals["material_signals"]}
     equipment = {normalize_term(term) for term in signals["equipment_signals"]}
     specializations = {normalize_term(term) for term in signals["specialization_signals"]}
+    public_signals = None
+    if profile["source"] == GOOGLE_SOURCE:
+        processes = {canonical_process(term) for term in specification.get("process", [])}
+        materials = {canonical_material(term) for term in specification.get("materials", [])}
+        material_signals = {canonical_material(term) for term in signals["material_signals"]}
+        public_signals = extract_public_signals(profile["display_name"], tuple(signals["specialization_signals"]))
 
-    def fraction(matched: int, requested: set, maximum: int) -> int:
+    def fraction(matched: float, requested: set, maximum: int) -> int:
         return round(maximum * matched / len(requested)) if requested else 0
 
-    matching_materials = sum(bool(({"wood", "plywood"} if term in {"wood", "plywood"} else {term})
-                                  & material_signals) for term in materials)
+    matching_materials = sorted(term for term in materials if
+        ({"wood", "plywood"} if term in {"wood", "plywood"} else {term}) & material_signals)
     breakdown = {
         "process_match": fraction(len(processes & capabilities), processes, 40),
-        "material_signal": fraction(matching_materials, materials, 20),
+        "material_signal": fraction(len(matching_materials), materials, 20),
         "equipment_signal": fraction(sum(bool(EQUIPMENT.get(term, set()) & equipment)
                                          for term in processes), processes, 15),
         "business_specialization": fraction(len(processes & specializations), processes, 10),
         "location_suitability": 0,
         "public_activity_signal": 5 if signals["public_activity_signal"] else 0,
     }
+    if public_signals is not None:
+        matching_processes = [public_signals.processes[term] for term in sorted(processes)
+                              if term in public_signals.processes]
+        breakdown["process_match"] = fraction(sum(signal.strength for signal in matching_processes), processes, 40)
+        breakdown["business_specialization"] = fraction(
+            sum(signal.specialization for signal in matching_processes), processes, 10)
     requested_location = specification.get("location") or {}
     city = normalize_term(requested_location.get("city") or "")
     country = normalize_term(requested_location.get("country") or "")
     candidate_location = profile["location"]
+    if public_signals is not None:
+        city = normalize_term(normalize_text(requested_location.get("city") or ""))
+        country = normalize_term(normalize_text(requested_location.get("country") or ""))
+        candidate_location = {key: normalize_text(value) for key, value in candidate_location.items()}
     same_country = country == normalize_term(candidate_location["country"])
     if city and city == normalize_term(candidate_location["city"]) and (not country or same_country):
         breakdown["location_suitability"] = 10
@@ -74,10 +94,19 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
         f"Requested materials appear in {source} public signals." if breakdown["material_signal"] else
         f"No matching material signal in the {source} public data.",
     ]
+    if public_signals is not None:
+        reasons = [reason for signal in matching_processes for reason in signal.reasoning]
+        reasoning = list(dict.fromkeys(reasons)) or ["No matching process signal in the Google Places public data."]
+        families = sorted({MATERIAL_FAMILIES.get(term, term) for term in matching_materials})
+        reasoning.extend(f"Public business data contains a {family}-related material signal." for family in families)
+        if not matching_materials:
+            reasoning.append("No matching material signal in the Google Places public data.")
     if breakdown["equipment_signal"]:
         reasoning.append(f"Relevant equipment appears in {source} public signals; availability is unverified.")
     if breakdown["business_specialization"]:
-        reasoning.append(f"{prefix} public specialization signals align with the requested process.")
+        reasoning.append("Public business name/type signals suggest a potential specialization; capability is unverified."
+                         if public_signals is not None else
+                         f"{prefix} public specialization signals align with the requested process.")
     if breakdown["location_suitability"]:
         reasoning.append(f"{prefix} location matches the requested city." if breakdown["location_suitability"] == 10 else
                          f"{prefix} location matches the requested country; city-level suitability is not established.")
