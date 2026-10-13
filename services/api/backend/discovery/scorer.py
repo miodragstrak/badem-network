@@ -1,10 +1,12 @@
 """Deterministic public-signal fit heuristic, not a manufacturing-capability guarantee."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 from backend.discovery.enrichment import enrichment_reasoning, public_activity_points
 from backend.discovery.models import GOOGLE_SOURCE
 from backend.discovery.profile_builder import normalize_term
+from backend.discovery.reasoning import COUNTRY_LOCATION_REASON, canonical_reasoning
 from backend.discovery.signals import (
     MATERIAL_FAMILIES, canonical_material, canonical_process, extract_public_signals, normalize_text,
 )
@@ -24,6 +26,7 @@ class FitScore:
     fit_label: str
     score_breakdown: dict[str, int]
     reasoning: list[str]
+    confidence: Literal["low", "medium"]
 
 
 def fit_label(score: int) -> str:
@@ -116,7 +119,7 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
                          f"{prefix} public specialization signals align with the requested process.")
     if breakdown["location_suitability"]:
         reasoning.append(f"{prefix} location matches the requested city." if breakdown["location_suitability"] == 10 else
-                         f"{prefix} location matches the requested country; city-level suitability is not established.")
+                         f"{prefix} {COUNTRY_LOCATION_REASON}")
     if enriched_evidence is not None:
         reasoning.extend(enrichment_reasoning(enriched_evidence))
     elif breakdown["public_activity_signal"]:
@@ -124,4 +127,15 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
                          "The listing includes a public activity signal.")
     reasoning.append("Quantity, dimensions and current production capacity have not been validated.")
     total = sum(breakdown.values())
-    return FitScore(total, fit_label(total), breakdown, reasoning)
+    confidence: Literal["low", "medium"] = "low"
+    # Confidence concerns this request's fit, not unrelated inferred capabilities.
+    if total >= 40 and breakdown["process_match"] > 0:
+        matched_confidences = [item["confidence"] for item in profile["inferred_capabilities"]
+                               if item["capability"] in processes]
+        corroborated = (enriched_evidence is not None and enriched_evidence["website_present"]
+                        and enriched_evidence["business_operational_signal"] == "LISTED_OPERATIONAL"
+                        and enriched_evidence["public_activity_signal_strength"] == "ESTABLISHED")
+        if any(value >= .65 for value in matched_confidences) or (
+                corroborated and any(value >= .5 for value in matched_confidences)):
+            confidence = "medium"
+    return FitScore(total, fit_label(total), breakdown, canonical_reasoning(reasoning), confidence)

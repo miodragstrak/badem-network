@@ -21,6 +21,7 @@ PROCESS_SIGNALS = {
 
 
 def build_profile(partner: PublicPartnerData) -> dict:
+    """Build unscored signals; the scorer replaces the evidence prior with fit confidence."""
     is_mock = partner.source == MOCK_SOURCE
     prefix = "mock" if is_mock else "Google Places"
     name_source = f"{prefix} business name"

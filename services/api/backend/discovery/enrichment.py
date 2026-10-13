@@ -5,6 +5,7 @@ import os
 from urllib.parse import urlsplit
 
 from backend.discovery.places_client import DiscoveryConfigurationError, DiscoveryProviderError
+from backend.discovery.reasoning import OPERATIONAL_REASON, canonical_reasoning
 
 
 DEFAULT_ENRICH_TOP_N = 3
@@ -76,11 +77,6 @@ def apply_enrichment(profile: dict, evidence: dict) -> None:
     profile["enrichment"] = {"status": "ENRICHED", "signals": signals, "public_evidence": evidence}
     profile["signals"]["website_signal"] = evidence["website_present"]
     profile["signals"]["public_activity_signal"] = public_activity_points(evidence) > 0
-    # Corroborate public-business signal coverage, never upgrade process evidence.
-    if (evidence["website_present"] and evidence["business_operational_signal"] == "LISTED_OPERATIONAL"
-            and evidence["public_activity_signal_strength"] == "ESTABLISHED"
-            and any(item["confidence"] >= .5 for item in profile["inferred_capabilities"])):
-        profile["confidence"] = "medium"
 
 
 def enrichment_reasoning(evidence: dict) -> list[str]:
@@ -88,9 +84,9 @@ def enrichment_reasoning(evidence: dict) -> list[str]:
     if evidence["website_present"]:
         reasons.append("A public website is listed; its content has not been checked.")
     if evidence["business_operational_signal"] == "LISTED_OPERATIONAL":
-        reasons.append("The public listing is marked operational; capacity and current availability are not established.")
+        reasons.append(OPERATIONAL_REASON)
     elif evidence["business_operational_signal"] == "LISTED_NON_OPERATIONAL":
         reasons.append("The listing is not operational; no public-activity credit is awarded.")
     if evidence["public_activity_signal_strength"] != "NONE":
         reasons.append("Public rating activity is present; ratings do not establish production capability or product quality.")
-    return reasons
+    return canonical_reasoning(reasons)

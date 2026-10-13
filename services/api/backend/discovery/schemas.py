@@ -72,7 +72,10 @@ class PartnerCandidate(BaseModel):
     fit_score: int = Field(ge=0, le=100)
     fit_label: FitLabel
     fit_summary: str
-    confidence: Literal["low", "medium"]
+    confidence: Literal["low", "medium"] = Field(description=(
+        "Confidence that public evidence supports this manufacturing-request fit, not supplier verification. "
+        "Inferred capability confidence separately describes signal specificity."
+    ))
     reasoning: list[str]
     score_breakdown: dict[str, int]
     source: DiscoverySource

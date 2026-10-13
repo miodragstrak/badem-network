@@ -12,6 +12,7 @@ from backend.discovery.enrichment import MAX_ENRICH_TOP_N, apply_enrichment
 from backend.discovery.mock_provider import MockDiscoveryProvider
 from backend.discovery.places_client import DiscoveryProviderError
 from backend.discovery.profile_builder import build_profile
+from backend.discovery.reasoning import canonical_reasoning
 from backend.discovery.schemas import ManufacturingSpecificationPayload, NewManufacturingRequest
 from backend.discovery.scorer import score_profile
 
@@ -64,10 +65,15 @@ class DiscoveryService:
     @staticmethod
     def candidate_response(row: dict, detailed: bool = False) -> dict:
         profile = json.loads(row["profile_json"])
+        profile["reasoning"] = canonical_reasoning(profile["reasoning"])
+        profile["confidence"] = row["confidence"]
+        # Keep legacy location/activity-only snapshots conservative without rescoring.
+        if row["fit_score"] < 40 or profile["score_breakdown"]["process_match"] == 0:
+            profile["confidence"] = "low"
         result = {
             "candidate_id": row["id"], "name": profile["display_name"], "fit_score": row["fit_score"],
             "fit_label": row["fit_label"], "fit_summary": profile["fit_summary"],
-            "confidence": row["confidence"], "reasoning": profile["reasoning"],
+            "confidence": profile["confidence"], "reasoning": profile["reasoning"],
             "score_breakdown": profile["score_breakdown"], "source": row["source"],
             "is_mock": row["source"] == models.MOCK_SOURCE,
             "verification_status": row["verification_status"], "disclaimer": profile["disclaimer"],
@@ -99,7 +105,7 @@ class DiscoveryService:
         for partner in partners:
             profile = build_profile(partner)
             score = score_profile(specification["payload"], profile)
-            profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
+            profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label, "confidence": score.confidence,
                             "fit_summary": f"{score.fit_label} based on public data",
                             "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
             candidate_id = str(uuid.uuid5(uuid.NAMESPACE_URL,
@@ -121,7 +127,7 @@ class DiscoveryService:
                     continue
                 apply_enrichment(profile, evidence)
                 score = score_profile(specification["payload"], profile)
-                profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
+                profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label, "confidence": score.confidence,
                                 "fit_summary": f"{score.fit_label} based on public data",
                                 "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
         with self.db() as connection:

@@ -438,8 +438,10 @@ signals. API results are explicitly `MOCK_PUBLIC_DATA` and `is_mock: true`.
 Every candidate/profile reports `PUBLIC_DATA_ONLY` and the disclaimer:
 "Potential fit based on public data. Production capability has not been verified."
 Scores and inferred capabilities never establish real production capability.
-Profile confidence is a conservative signal-coverage heuristic (`low`/`medium`),
-not a calibrated probability or supplier verification.
+Candidate/profile `confidence` is a conservative, request-specific fit-support
+heuristic (`low`/`medium`), not a calibrated probability or supplier verification.
+Inferred capability confidence separately describes public-signal specificity;
+a specific cutting signal does not make an engraving request a confident fit.
 
 Scoring is deterministic, with `score_breakdown` and `reasoning` exposed:
 
@@ -459,6 +461,26 @@ the same country only, or zero when unknown/mismatched; no distance is invented.
 Labels are `Strong potential fit` (82-100), `Potential fit` (60-81), `Possible fit`
 (40-59) and `Low-confidence fit` (below 40). Quantities, tolerances, current
 availability and output quality are not validated by this heuristic.
+
+V1 keeps the API key `confidence` for compatibility; UI consumers should label
+it "Fit confidence". It used to describe evidence coverage for any inferred
+process, even one unrelated to the request. It now describes evidence supporting
+this requested fit, for both mock and Google results. The scorer decides and
+persists it after receiving the specification; the unscored builder's evidence
+prior is not the final fit confidence.
+
+Meaningful fit support requires at least 40 fit points and positive process
+match, plus a matching inferred capability with confidence at least .65. Weaker
+matching inference (at least .5) can reach medium with the existing full listing
+corroboration described below. This is not score-only binning: a generic laser
+signal stays low even when material/location/activity yield a score over 40.
+Location-only, activity-only and material-only support cannot become medium.
+Only `low` and `medium` are supported; no high-confidence or verification tier
+is added. Scores, labels, weights and numeric capability-signal confidence are
+unchanged. For "Lasersko secenje Beograd" on a laser-engraving/plywood request,
+10 points and `Low-confidence fit` remain unchanged; fit confidence changes
+from medium to low, while the cutting inference remains .75. Public activity
+can still add up to 5 points without changing this mismatch to a confident fit.
 
 Rediscovery atomically replaces only that request's results. Candidate/profile
 IDs and creation times remain stable for unchanged source/place IDs;
@@ -631,6 +653,13 @@ Google validation:
 All results remain `PUBLIC_DATA_ONLY` with the exact existing disclaimer.
 Stored results are snapshots: rerun the existing authenticated discovery POST
 to rebuild profiles and rankings; GET does not rescore or contact Google.
+Generation and API reads normalize only the two known `arenot`/`isnot` reasoning
+defects. Current literals and tracked history already had correct spacing;
+the read path previously returned stored strings verbatim. Read responses now
+repair those historical variants and downgrade legacy confidence to low when
+the stored score is below 40 or stored process match is zero. This neither
+rewrites snapshots nor changes scores/ranking/timestamps. Rediscovery applies
+the complete request-aware confidence rule to other historical results.
 
 ### Top-Candidate Enrichment (Milestone 03)
 
@@ -691,13 +720,14 @@ claim. All process/material/equipment/specialization/location categories,
 weights, maxima, fit thresholds and the exact disclaimer remain unchanged.
 For example, a base score of 60 can become 65, not a verified capability.
 
-Overall profile confidence can rise from `low` to `medium` only when an existing
-process-name/type inference has confidence at least .5 and all three corroborate
+For a meaningful fit, profile confidence can rise from `low` to `medium` only
+when a requested-process inference has confidence at least .5 and all three corroborate
 the listing: a website, listed-operational status and at least 10 ratings with a
 valid rating. A large rating count alone never upgrades confidence. Generic
 laser-only or unrelated names remain low; medium never becomes high. Inferred
-capability confidence/evidence is unchanged: this is public-business coverage,
-not stronger proof of manufacturing ability, equipment, capacity or availability.
+capability confidence/evidence is unchanged. Corroboration supports only an
+already relevant fit; it is not proof of manufacturing ability, equipment,
+capacity or availability.
 
 Only derived metadata is stored in the existing `profile_json` and exposed
 through the existing detailed `partner_profile`; summary API fields are unchanged:

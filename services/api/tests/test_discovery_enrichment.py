@@ -230,6 +230,7 @@ def test_malformed_optional_fields_are_sanitized_provider_errors(changes):
 @pytest.mark.parametrize("name,expected", [
     ("graver doo", "medium"), ("Penda lasersko graviranje", "medium"),
     ("Tenzor Laser", "low"), ("General Workshop", "low"), ("Wooding Studio", "low"),
+    ("Lasersko se\u010denje Beograd", "low"),
 ])
 def test_corroborated_public_confidence_never_upgrades_inferred_process_evidence(name, expected):
     profile = public_profile(name)
@@ -237,7 +238,7 @@ def test_corroborated_public_confidence_never_upgrades_inferred_process_evidence
     before = score_profile(SPECIFICATION, profile)
     apply_enrichment(profile, derive_public_evidence(DETAILS))
     after = score_profile(SPECIFICATION, profile)
-    assert profile["confidence"] == expected
+    assert after.confidence == expected
     assert profile["inferred_capabilities"] == capabilities
     assert after.fit_score == before.fit_score + 5
     assert all(after.score_breakdown[key] == before.score_breakdown[key]
@@ -251,7 +252,7 @@ def test_confidence_corroboration_requires_all_coverage_fields(field):
     profile = public_profile("graver doo")
     details = {key: value for key, value in DETAILS.items() if key != field}
     apply_enrichment(profile, derive_public_evidence(details))
-    assert profile["confidence"] == "low"
+    assert score_profile(SPECIFICATION, profile).confidence == "low"
 
 
 def test_default_top_three_are_selected_from_base_ranking_once_then_reranked(enriched_setup):
