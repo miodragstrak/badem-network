@@ -88,7 +88,7 @@ def test_material_terms_are_not_process_or_equipment_claims(word, material):
 @pytest.mark.parametrize("name", [
     "General repair workshop", "Gravex", "print studio", "3d cinema", "manufacturer",
     "graverobber", "engravingly", "laserlight show", "Woodstock", "Woodland", "Hollywood",
-    "metallica", "plasticity", "sperplocastudio",
+    "metallica", "plasticity", "sperplocastudio", "namestajland", "stolarland", "furnitureland", "Woodproject",
 ])
 def test_unrelated_words_and_substring_collisions_do_not_become_manufacturing_signals(name):
     extracted = extract_public_signals(name)
@@ -159,6 +159,7 @@ def test_3d_printing_and_prototyping_are_independent_of_laser_engraving():
 
 @pytest.mark.parametrize("name,other_process", [
     ("Penda lasersko graviranje", "laser_cutting"), ("Lasersko secenje Studio", "laser_engraving"),
+    ("Lasersko se\u010denje Beograd", "laser_engraving"),
 ])
 def test_specific_laser_process_does_not_imply_the_other_process(name, other_process):
     profile = public_profile(name)
@@ -241,3 +242,35 @@ def test_partial_signal_credit_is_proportional_across_multiple_requests(
     assert score.score_breakdown["process_match"] == process_points
     assert score.score_breakdown["business_specialization"] == specialization_points
     assert score.fit_score <= 100
+
+
+@pytest.mark.parametrize("term", [
+    "name\u0161taj", "namestaj", "stolar", "stolarija", "furniture", "woodwork", "woodworking",
+])
+@pytest.mark.parametrize("material", ["wood", "plywood"])
+def test_furniture_and_carpentry_terms_are_material_only_public_signals(term, material):
+    name = f"{term} Studio"
+    extracted = extract_public_signals(name)
+    assert extracted.materials == {"wood"}
+    assert extracted.processes == {}
+    profile = public_profile(name)
+    score = score_profile({**SPECIFICATION, "materials": [material]}, profile)
+    assert score.score_breakdown == {
+        "process_match": 0, "material_signal": 20, "equipment_signal": 0,
+        "business_specialization": 0, "location_suitability": 10, "public_activity_signal": 0,
+    }
+    assert profile["inferred_capabilities"] == []
+    assert profile["verification_status"] == VERIFICATION_STATUS
+    assert profile["disclaimer"] == DISCLAIMER
+    assert "Public business data contains a wood-related material signal." in score.reasoning
+    wording = json.dumps({"profile": profile, "reasoning": score.reasoning}).casefold()
+    assert all(claim not in wording for claim in (
+        "can perform", "has laser equipment", "supports plywood", "verified supplier", "can manufacture"))
+
+
+def test_woodproject_furniture_fixture_uses_existing_unicode_normalization():
+    accented = public_profile("Woodproject - Name\u0161taj po meri i po Va\u0161oj \u017eelji!")
+    ascii_profile = public_profile("Woodproject - Namestaj po meri i po Vasoj zelji!")
+    assert accented["signals"] == ascii_profile["signals"]
+    assert score_profile(SPECIFICATION, accented) == score_profile(SPECIFICATION, ascii_profile)
+    assert score_profile(SPECIFICATION, accented).fit_score == 30

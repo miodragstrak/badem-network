@@ -22,7 +22,8 @@ ENGRAVING_TERMS = ("graviranje", "engraving", "graver", "engraver")
 MILLING_TERMS = ("glodanje", "milling")
 LASER_TERMS = ("laser", "lasersko", "laserski", "laserom")
 MATERIAL_TERMS = {
-    "wood": ("wood", "wooden", "woodworking", "drvo", "drveni", "stolarija", "carpenter", "carpentry"),
+    "wood": ("wood", "wooden", "woodwork", "woodworking", "drvo", "drveni", "stolar", "stolarija",
+             "namestaj", "furniture", "carpenter", "carpentry"),
     "plywood": ("plywood", "sper", "sperploca"),
     "metal": ("metal", "metalworking", "metalna obrada"),
     "steel": ("steel",),

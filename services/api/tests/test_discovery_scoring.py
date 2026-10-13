@@ -1,7 +1,7 @@
 import pytest
 
 from backend.discovery.mock_provider import MockDiscoveryProvider
-from backend.discovery.models import DISCLAIMER, PublicPartnerData
+from backend.discovery.models import DISCLAIMER, GOOGLE_SOURCE, MOCK_SOURCE, PublicPartnerData
 from backend.discovery.profile_builder import build_profile
 from backend.discovery.scorer import WEIGHTS, fit_label, score_profile
 
@@ -75,3 +75,15 @@ def test_missing_public_signals_produce_low_confidence_without_capability_claims
     assert score.fit_label == "Low-confidence fit"
     assert "can manufacture" not in " ".join(score.reasoning).casefold()
     assert profile["disclaimer"] == DISCLAIMER
+
+
+@pytest.mark.parametrize("source,prefix", [(MOCK_SOURCE, "Mock"), (GOOGLE_SOURCE, "Google Places")])
+@pytest.mark.parametrize("location", [{"country": "RS"}, {"city": "Novi Sad", "country": "RS"}])
+def test_country_only_location_reasoning_has_exact_correct_spacing(source, prefix, location):
+    profile = build_profile(PublicPartnerData("wording-test", "General workshop", "Belgrade", "RS", source=source))
+    score = score_profile({"process": ["laser_engraving"], "materials": ["wood"], "location": location}, profile)
+    assert score.score_breakdown["location_suitability"] == 5
+    assert [reason for reason in score.reasoning if reason.startswith(f"{prefix} location")] == [
+        f"{prefix} location matches the requested country; city-level suitability is not established.",
+    ]
+    assert all("isnot" not in reason for reason in score.reasoning)

@@ -585,6 +585,14 @@ retained. Location/address context contributes only to location scoring, never
 to manufacturing process/material evidence. Google location comparisons also
 normalize Latin diacritics while still rejecting conflicting countries.
 
+Furniture/carpentry terms (`namestaj`, including its accented Serbian spelling,
+`stolar`, `stolarija`, `furniture`, `woodwork`, `woodworking`) contribute a
+wood-related material signal only, not process, equipment or process-specific
+specialization evidence. For example, the Woodproject furniture-name fixture
+earns 20 material points for wood/plywood (30 total with a matching city), with
+zero process/equipment/specialization points. This is a coarse public signal,
+not confirmation of plywood stock, production capability or product quality.
+
 For Google profiles, explicit process phrases can earn 40 process and 10
 specialization points. Engraving/milling-only terms earn 60% of those categories;
 generic CNC earns 80%. A generic laser-only signal earns 25% process credit and

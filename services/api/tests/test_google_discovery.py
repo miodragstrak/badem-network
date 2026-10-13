@@ -426,3 +426,33 @@ def test_multilingual_google_candidates_rank_by_signals_with_exact_disclaimer_an
         assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (5,)
     assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == response.json()
     assert discover(client, request_id).json() == response.json()
+
+
+@pytest.mark.parametrize("material", ["wood", "plywood"])
+def test_furniture_google_candidate_persists_material_only_signals_and_correct_country_wording(google_setup, material):
+    client, _, payload, calls = google_setup
+    payload["places"] = [listing("woodproject-fixture", "Woodproject - Name\u0161taj po meri i po Va\u0161oj \u017eelji!")]
+    request_id = create_request(client)
+    specify(client, request_id, {**SPECIFICATION, "materials": [material],
+                                "location": {"city": "Novi Sad", "country": "RS"}})
+    response = discover(client, request_id)
+    assert response.status_code == 200, response.text
+    assert len(calls) == 3
+    candidate = response.json()["candidates"][0]
+    assert candidate["fit_score"] == 25
+    assert candidate["score_breakdown"] == {
+        "process_match": 0, "material_signal": 20, "equipment_signal": 0,
+        "business_specialization": 0, "location_suitability": 5, "public_activity_signal": 0,
+    }
+    assert candidate["verification_status"] == models.VERIFICATION_STATUS
+    assert candidate["disclaimer"] == models.DISCLAIMER
+    expected_location = "Google Places location matches the requested country; city-level suitability is not established."
+    assert expected_location in candidate["reasoning"]
+    detail = client.get(f"/api/partner-candidates/{candidate['candidate_id']}", headers=ADMIN).json()
+    assert detail["reasoning"] == detail["partner_profile"]["reasoning"] == candidate["reasoning"]
+    assert detail["partner_profile"]["signals"]["material_signals"] == ["wood"]
+    assert detail["partner_profile"]["inferred_capabilities"] == []
+    wording = json.dumps(detail).casefold()
+    assert all(claim not in wording for claim in (
+        "isnot", "can perform", "has laser equipment", "supports plywood", "verified supplier", "can manufacture"))
+    assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == response.json()
