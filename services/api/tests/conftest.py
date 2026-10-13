@@ -6,7 +6,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_discovery_and_external_http(monkeypatch):
-    for name in ("BADEM_DISCOVERY_PROVIDER", "GOOGLE_PLACES_API_KEY"):
+    for name in ("BADEM_DISCOVERY_PROVIDER", "GOOGLE_PLACES_API_KEY", "BADEM_DISCOVERY_ENRICH_TOP_N"):
         monkeypatch.delenv(name, raising=False)
 
     def block_network(*args, **kwargs):

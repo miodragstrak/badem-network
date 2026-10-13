@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from backend.discovery.enrichment import enrichment_reasoning, public_activity_points
 from backend.discovery.models import GOOGLE_SOURCE
 from backend.discovery.profile_builder import normalize_term
 from backend.discovery.signals import (
@@ -46,11 +47,15 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
     equipment = {normalize_term(term) for term in signals["equipment_signals"]}
     specializations = {normalize_term(term) for term in signals["specialization_signals"]}
     public_signals = None
+    enriched_evidence = None
     if profile["source"] == GOOGLE_SOURCE:
         processes = {canonical_process(term) for term in specification.get("process", [])}
         materials = {canonical_material(term) for term in specification.get("materials", [])}
         material_signals = {canonical_material(term) for term in signals["material_signals"]}
         public_signals = extract_public_signals(profile["display_name"], tuple(signals["specialization_signals"]))
+        enrichment = profile.get("enrichment", {})
+        if enrichment.get("status") == "ENRICHED":
+            enriched_evidence = enrichment["public_evidence"]
 
     def fraction(matched: float, requested: set, maximum: int) -> int:
         return round(maximum * matched / len(requested)) if requested else 0
@@ -72,6 +77,8 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
         breakdown["process_match"] = fraction(sum(signal.strength for signal in matching_processes), processes, 40)
         breakdown["business_specialization"] = fraction(
             sum(signal.specialization for signal in matching_processes), processes, 10)
+        if enriched_evidence is not None:
+            breakdown["public_activity_signal"] = public_activity_points(enriched_evidence)
     requested_location = specification.get("location") or {}
     city = normalize_term(requested_location.get("city") or "")
     country = normalize_term(requested_location.get("country") or "")
@@ -110,7 +117,9 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
     if breakdown["location_suitability"]:
         reasoning.append(f"{prefix} location matches the requested city." if breakdown["location_suitability"] == 10 else
                          f"{prefix} location matches the requested country; city-level suitability is not established.")
-    if breakdown["public_activity_signal"]:
+    if enriched_evidence is not None:
+        reasoning.extend(enrichment_reasoning(enriched_evidence))
+    elif breakdown["public_activity_signal"]:
         reasoning.append("The fixture includes a public activity signal." if profile["is_mock"] else
                          "The listing includes a public activity signal.")
     reasoning.append("Quantity, dimensions and current production capacity have not been validated.")

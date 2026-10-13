@@ -2,6 +2,7 @@
 
 import re
 
+from backend.discovery.enrichment import configured_enrichment_limit, derive_public_evidence
 from backend.discovery.models import GOOGLE_SOURCE, PublicPartnerData
 from backend.discovery.places_client import GooglePlacesClient
 from backend.discovery.query_builder import MAX_QUERIES, build_queries
@@ -50,6 +51,10 @@ class GooglePlacesDiscoveryProvider:
 
     def __init__(self, client: GooglePlacesClient | None = None):
         self.client = client if client is not None else GooglePlacesClient()
+        self.enrich_top_n = configured_enrichment_limit()
+
+    def enrich(self, place_id: str) -> dict:
+        return derive_public_evidence(self.client.place_details(place_id))
 
     def discover(self, specification: dict) -> list[PublicPartnerData]:
         partners = {}

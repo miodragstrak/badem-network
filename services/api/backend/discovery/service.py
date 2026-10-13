@@ -8,6 +8,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 
 from backend.discovery import models
+from backend.discovery.enrichment import MAX_ENRICH_TOP_N, apply_enrichment
 from backend.discovery.mock_provider import MockDiscoveryProvider
 from backend.discovery.places_client import DiscoveryProviderError
 from backend.discovery.profile_builder import build_profile
@@ -107,6 +108,22 @@ class DiscoveryService:
                             "source_place_id": partner.source_place_id,
                             "profile_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"badem:capacity-profile:{candidate_id}")),
                             "profile": profile})
+        enrich = getattr(self.provider, "enrich", None)
+        if enrich is not None and getattr(self.provider, "source", None) == models.GOOGLE_SOURCE:
+            limit = max(0, min(getattr(self.provider, "enrich_top_n", 0), MAX_ENRICH_TOP_N))
+            ranked = sorted(results, key=lambda row: (-row["profile"]["fit_score"], row["source_place_id"]))
+            for result in ranked[:limit]:
+                profile = result["profile"]
+                try:
+                    evidence = enrich(result["source_place_id"])
+                except DiscoveryProviderError:
+                    profile["enrichment"] = {"status": "UNAVAILABLE", "signals": []}
+                    continue
+                apply_enrichment(profile, evidence)
+                score = score_profile(specification["payload"], profile)
+                profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
+                                "fit_summary": f"{score.fit_label} based on public data",
+                                "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
         with self.db() as connection:
             request = self.require_request(connection, request_id)
             if models.get_specification(connection, request_id) != specification:

@@ -528,7 +528,8 @@ Unused formatted addresses and coordinates are not requested. Names, address
 components and type fields use the Text Search Pro tier, not ID-only pricing;
 see [Google's field-mask and billing documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).
 No wildcard, website, reviews, ratings, phone numbers, opening hours, photos,
-Place Details enrichment, pagination or automatic retries are used.
+pagination or automatic retries are used in base Text Search. Milestone 03
+adds the separate bounded Place Details stage below, without widening this mask.
 
 Hard limits (constants, not unbounded environment overrides):
 
@@ -547,6 +548,8 @@ website/review evidence, activity, capacity or availability is invented. Missing
 signals receive no score, so these minimal Google profiles often have low
 confidence and lower scores than richer fictional fixtures. Only existing
 normalized profile fields and source IDs are persisted, not raw Places payloads.
+The selected top candidates can additionally carry the derived enrichment
+metadata described below.
 
 Timeouts return HTTP 504; upstream non-2xx, connection/protocol failures, invalid
 JSON and malformed response containers return HTTP 502 with sanitized messages.
@@ -608,8 +611,9 @@ a rule-based specificity heuristic, not a verified capability or calibrated
 probability: explicit phrases use .75; weaker engraving/milling .55, CNC .60,
 and generic laser .30. Stronger repeated evidence wins rather than stacking
 confidence. Profile confidence remains `low`/`medium`; equipment/activity fields
-remain zero for the current Google provider. No new Google fields, enrichment,
-network calls or changes to provider limits are introduced by extraction.
+remain zero at base discovery. No new Google fields or network calls are
+introduced by extraction; optional enrichment changes only public activity and
+public-business signal coverage, never inferred process evidence or equipment.
 
 Deterministic name fixtures below use generic place types, Belgrade/RS, and a
 laser-engraving/plywood request. These are unit-test examples, not another live
@@ -627,6 +631,110 @@ Google validation:
 All results remain `PUBLIC_DATA_ONLY` with the exact existing disclaimer.
 Stored results are snapshots: rerun the existing authenticated discovery POST
 to rebuild profiles and rankings; GET does not rescore or contact Google.
+
+### Top-Candidate Enrichment (Milestone 03)
+
+With the Google provider, the existing discovery POST ranks the complete base
+candidate set, then enriches only the base top 3 by default. Ties use Place ID,
+as in persisted rankings. The selection is frozen before enrichment; there is
+no feedback loop that fetches more candidates after their scores change.
+Successful enrichment is rescored and final rankings are persisted atomically.
+All search/detail I/O remains outside SQLite write transactions. Mock discovery
+is unchanged, and existing stored/non-enriched profiles remain valid.
+
+`BADEM_DISCOVERY_ENRICH_TOP_N` is read at Google provider startup: default `3`,
+allowed integer range `0` through `5`. `0` disables details while preserving
+Google Text Search; invalid/out-of-range values fail clearly instead of silently
+raising the budget. The service also enforces the hard maximum of 5. Mock mode
+does not use this setting. For example, set it before starting the API:
+
+```bash
+export BADEM_DISCOVERY_PROVIDER=google_places
+export BADEM_DISCOVERY_ENRICH_TOP_N=3
+```
+
+Each selected candidate gets at most one request:
+
+```text
+GET https://places.googleapis.com/v1/places/{source_place_id}
+X-Goog-FieldMask: websiteUri,rating,userRatingCount,businessStatus
+```
+
+The same server-side environment key goes in `X-Goog-Api-Key`, never the URL.
+The client retains the 5-second connect/read/write/pool timeouts, closes after
+each request, ignores environment proxies, and does not follow redirects,
+paginate, retry or follow moved-place IDs. No reviews, photos, phone numbers,
+opening hours, summaries, duplicate name/type fields, website crawling, scraping
+or LLMs are requested or used. Only URI presence is checked; the website is
+never fetched and its text/URL terms do not become manufacturing evidence.
+
+The mask invokes the Place Details Enterprise SKU because website and rating
+fields are included; these are additional potentially billable requests beyond
+the unchanged Text Search Pro calls. See the verified
+[Place Details field masks](https://developers.google.com/maps/documentation/places/web-service/place-details)
+and [field/SKU table](https://developers.google.com/maps/documentation/places/web-service/data-fields).
+Maximum requests per discovery: 3 searches plus 3 details by default (6 total),
+or 3 searches plus 5 details with the largest setting (8 total). Empty/smaller
+result sets consume no unused detail budget. Use `0`, Google project quotas and
+billing limits when details are not appropriate for your deployment.
+
+Detail enrichment contributes only inside the existing 0-5 public-activity
+category: a valid HTTP(S) website URI contributes 1, a listed-operational
+business 2, and rating coverage contributes 1 for 1-9 ratings or 2 for 10 or more.
+Rating coverage requires a valid rating and positive count; rating magnitude
+does not affect the score. Counts indicate cumulative public activity, not
+recency, output quality or verified demand. Known closed/future-opening listings
+receive zero activity credit regardless of historical website/ratings, while
+their base candidate and manufacturing-name signals remain intact. Missing or
+unknown business status supplies no operational points and no availability
+claim. All process/material/equipment/specialization/location categories,
+weights, maxima, fit thresholds and the exact disclaimer remain unchanged.
+For example, a base score of 60 can become 65, not a verified capability.
+
+Overall profile confidence can rise from `low` to `medium` only when an existing
+process-name/type inference has confidence at least .5 and all three corroborate
+the listing: a website, listed-operational status and at least 10 ratings with a
+valid rating. A large rating count alone never upgrades confidence. Generic
+laser-only or unrelated names remain low; medium never becomes high. Inferred
+capability confidence/evidence is unchanged: this is public-business coverage,
+not stronger proof of manufacturing ability, equipment, capacity or availability.
+
+Only derived metadata is stored in the existing `profile_json` and exposed
+through the existing detailed `partner_profile`; summary API fields are unchanged:
+
+```json
+{
+  "enrichment": {
+    "status": "ENRICHED",
+    "signals": ["website_present", "operational_listing", "public_activity"],
+    "public_evidence": {
+      "website_present": true,
+      "rating_present": true,
+      "public_activity_signal_strength": "ESTABLISHED",
+      "business_operational_signal": "LISTED_OPERATIONAL"
+    }
+  }
+}
+```
+
+Evidence strength is `NONE`, `LIMITED` or `ESTABLISHED`; operational evidence is
+`UNKNOWN`, `LISTED_OPERATIONAL` or `LISTED_NON_OPERATIONAL`. URLs, raw ratings,
+exact counts, raw status strings and entire Google detail payloads are transient,
+not stored or logged. Missing optional fields can yield an `ENRICHED` result
+with no signals and no score change. A timeout, non-2xx (including disappeared
+places/404), transport error, invalid JSON or malformed fields records
+`{"status":"UNAVAILABLE","signals":[]}` and preserves that candidate's base
+score, confidence and reasoning; the remaining selections continue. It does
+not fail discovery. Base provider-wide failures retain HTTP 502/504 and previous
+persisted results. No background enrichment, caching or automatic refresh exists.
+
+Profiles remain BADEM-derived, `PUBLIC_DATA_ONLY`, with the exact disclaimer.
+Persisting coarse booleans/categories rather than raw details reduces retained
+Google content, but is not an assertion of exemption from Google Maps Platform
+terms. Before production use, review whether your agreement permits these
+derived flags and existing profile storage, and address retention/attribution
+requirements from the linked Places policies above. No long-term storage
+permission for raw detail fields is assumed by this prototype.
 
 ### Try Google Discovery Locally
 

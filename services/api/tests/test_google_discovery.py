@@ -42,6 +42,8 @@ def google_setup(tmp_path, monkeypatch):
     monkeypatch.delenv("BADEM_NODE_PUBLIC_KEY", raising=False)
     monkeypatch.setenv("BADEM_DISCOVERY_PROVIDER", "google_places")
     monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-only-placeholder")
+    # These cases exercise the base discovery contract; enrichment has its own HTTP tests.
+    monkeypatch.setenv("BADEM_DISCOVERY_ENRICH_TOP_N", "0")
     calls = []
     payload = {"places": [listing(), listing("test-place-2", "General repair workshop", city="Novi Sad")]}
 
