@@ -391,3 +391,109 @@ questions needed to wire the adapter.
   and separate secrets per device are not implemented.
 - Jobs store a supplied file SHA-256, not the manufacturing file itself.
 - Buyer rejection, timeout, and dispute handling are not implemented.
+
+## Manufacturing Discovery Milestone 01
+
+`backend/discovery/` adds an isolated, mock-only manufacturing discovery flow.
+It does not create execution jobs, contact machines, verify suppliers, perform
+cryptographic operations, or call Google Places, scraping targets or Solana.
+The existing proof, event and anchor routes are unchanged. These new routes
+reuse the API's SQLite transaction helper and `X-Admin-Key` authentication.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/manufacturing-requests` | Create a `DRAFT` manufacturing request; HTTP 201 |
+| `GET /api/manufacturing-requests/{id}` | Read the manufacturing request |
+| `POST /api/manufacturing-requests/{id}/specification` | Store structured JSON; HTTP 201 initially, 200 on replacement |
+| `GET /api/manufacturing-requests/{id}/specification` | Read the current specification and its JSON `payload` |
+| `POST /api/manufacturing-requests/{id}/discover` | Build and persist ranked mock partner candidates |
+| `GET /api/manufacturing-requests/{id}/candidates` | Read persisted rankings without running discovery |
+| `GET /api/partner-candidates/{candidate_id}` | Read a detailed `partner_profile` |
+
+The four additive tables are `manufacturing_requests`,
+`manufacturing_specifications`, `partner_candidates` and
+`public_capacity_profiles`. Specifications and derived profiles are stored as
+JSON, with foreign keys and one current specification/profile per parent.
+Public Capacity Profile is the internal derived model, not a Google business
+profile. Future `GOOGLE_PLACES` source storage is reserved, not integrated.
+
+State flow: `DRAFT -> SPECIFIED -> DISCOVERY_READY -> DISCOVERY_COMPLETE`.
+Discovery readiness and completion occur in one transaction; failures roll back
+to the previous status and keep prior results. Discovery without a specification
+returns 409. Unknown entities and missing specifications return 404.
+
+A specification requires nonempty `process` and `materials` string lists;
+taxonomy terms are not an enum. Quantity, dimensions, requirements and location
+are optional. Additional JSON fields round-trip, with a 64 KiB limit and finite
+JSON values. Request quantity/location metadata may initially be omitted.
+Specifications are supplied directly: no LLM parsing or location geocoding.
+Scoring uses specification location, not parsing of request `location_text`.
+
+The fictional fixtures cover laser, CNC, maker, 3D-print and sparse workshop
+signals. API results are explicitly `MOCK_PUBLIC_DATA` and `is_mock: true`.
+Every candidate/profile reports `PUBLIC_DATA_ONLY` and the disclaimer:
+"Potential fit based on public data. Production capability has not been verified."
+Scores and inferred capabilities never establish real production capability.
+Profile confidence is a conservative signal-coverage heuristic (`low`/`medium`),
+not a calibrated probability or supplier verification.
+
+Scoring is deterministic, with `score_breakdown` and `reasoning` exposed:
+
+| Category | Maximum |
+| --- | --- |
+| Process match | 40 |
+| Material signal | 20 |
+| Equipment/capability signal | 15 |
+| Business specialization | 10 |
+| Location suitability | 10 |
+| Public activity signal | 5 |
+
+Multi-process/material requests receive proportional, rounded credit; duplicate
+normalized terms do not inflate scores. Wood/plywood share a coarse public-signal
+family. Location earns 10 for the same city (without conflicting country), 5 for
+the same country only, or zero when unknown/mismatched; no distance is invented.
+Labels are `Strong potential fit` (82-100), `Potential fit` (60-81), `Possible fit`
+(40-59) and `Low-confidence fit` (below 40). Quantities, tolerances, current
+availability and output quality are not validated by this heuristic.
+
+Rediscovery atomically replaces only that request's results. Candidate/profile
+IDs and creation times remain stable for unchanged source fixtures;
+`last_refreshed_at` advances. Ranking ties use stable source fixture IDs.
+Replacing a specification keeps its ID and creation time, returns the request
+to `SPECIFIED`, and deletes stale candidates/profiles until discovery is rerun.
+There is no result history, onboarding, outreach, quote, payment or marketplace
+workflow in this milestone.
+
+### Try Discovery With Curl
+
+Start the API using the existing Local Setup / Run FastAPI instructions above.
+No Google or Solana settings are needed. In a terminal with the same admin key:
+
+```bash
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d '{"title":"Wooden logo pendant","description":"30 plywood pendants with an engraved logo","location_text":"Belgrade, Serbia","quantity":30}' \
+  http://127.0.0.1:8000/api/manufacturing-requests
+
+REQUEST_ID='<id from the create response>'
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID"
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d '{"process":["laser_engraving"],"materials":["plywood"],"quantity":30,"dimensions_mm":{"width":80,"height":80,"thickness":3},"requirements":["engraved logo"],"location":{"city":"Belgrade","country":"RS"}}' \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/specification"
+
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/specification"
+
+curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/discover"
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/candidates"
+
+CANDIDATE_ID='<candidate_id from discovery>'
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/partner-candidates/$CANDIDATE_ID"
+```
+
+Discovery tests: `.venv/bin/python -m pytest -q tests/test_discovery.py tests/test_discovery_scoring.py`.
+The complete `.venv/bin/python -m pytest -q` suite also exercises the unchanged
+Proof-of-Production and mocked Solana anchoring flows, without network access.

@@ -16,6 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from backend.discovery.router import create_discovery_router
 from backend.proofs import ProductionProof, canonical_message, registered_public_key
 from backend.solana_anchor import (
     AnchorConfigurationError, AnchorFailedError, AnchorPendingError, AnchorRPCError,
@@ -394,4 +395,5 @@ def create_app(db_path: str | None = None, admin_key: str | None = None,
             row = connection.execute("SELECT * FROM proof_anchors WHERE proof_id=?", (proof_id,)).fetchone()
         return anchor_response(row)
 
+    app.include_router(create_discovery_router(db, require_admin))
     return app
