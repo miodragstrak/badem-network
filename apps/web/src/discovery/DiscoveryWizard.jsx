@@ -500,12 +500,13 @@ export default function DiscoveryWizard() {
     <main className="discovery-shell">
       <header className="discovery-topbar">
         <a className="brand" href="/" aria-label="BADEM proof demo">
-          <span className="badem-mark" aria-hidden="true">
-            <span />
-            <strong>B</strong>
-          </span>
+          <img
+            src="/brand/badem-three-layer-lockup.png"
+            alt="aiBADEM - Identity, Network, Manufacturing"
+            width="1600"
+            height="720"
+          />
           <span>
-            <strong>BADEM</strong>
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>

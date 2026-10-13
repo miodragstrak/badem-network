@@ -263,10 +263,12 @@ async function loadLiveState(config) {
 
 function BrandMark() {
   return (
-    <span className="badem-mark" aria-hidden="true">
-      <span />
-      <strong>B</strong>
-    </span>
+    <img
+      src="/brand/badem-three-layer-lockup.png"
+      alt="aiBADEM - Identity, Network, Manufacturing"
+      width="1600"
+      height="720"
+    />
   )
 }
 
@@ -359,6 +361,7 @@ function StateProgress({ currentIndex }) {
           return (
             <div
               key={stage.id}
+              data-stage={stage.id}
               className={`state-step ${complete ? 'complete' : ''} ${active ? 'active' : ''}`}
             >
               <span className="state-icon">
@@ -518,7 +521,6 @@ function App() {
         <a className="brand" href="/" aria-label="BADEM demo home">
           <BrandMark />
           <span>
-            <strong>BADEM</strong>
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>

@@ -132,3 +132,15 @@ deployment are not performed by this change.
 Before public launch, review wording against the final demo, verify public URLs,
 review the favicon and add a real contact channel. The linked early hardware
 video is not presented as the finished demo.
+
+## Shared Visual System
+
+`apps/shared/brand.css` contains the existing landing fonts and core color tokens,
+also used by the discovery wizard and proof demo. The landing's layout, original
+logo, content, gallery and walkthrough are unchanged. The audit and application
+alignment rules are documented in `docs/design-system.md`.
+
+Build from the full repository so `apps/shared/` is available. For the Vercel
+project rooted at `apps/landing`, enable **Include source files outside of the
+Root Directory in the Build Step**. This source-sharing requirement does not
+change the demo URL policy. No hosting settings or deployment are changed here.

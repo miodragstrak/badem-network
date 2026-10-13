@@ -80,3 +80,18 @@ npm run build
 
 Tests use Node's built-in runner, with injected fetch responses for API errors,
 ordering, empty results, cancellation and validation. No new dependencies.
+
+## Visual System
+
+The app shares `apps/shared/brand.css` with the landing site: its original
+off-white/green palette, DM Sans/Manrope fonts, CTA treatment and three-layer
+logo. The token audit and contrast decisions are in `docs/design-system.md`.
+The logo in `public/brand/` is an unchanged copy of the landing asset.
+
+Discovery and the profile modal use light surfaces. The proof receipt and active
+anchored state retain dark green technical emphasis. Layouts, wording, API
+configuration, fit results, debug/fallback modes and receipt values are unchanged.
+
+Build from the full repository so `apps/shared/` is present. For a Vercel project
+rooted at `apps/web`, enable **Include source files outside of the Root Directory
+in the Build Step**. No hosting settings are changed here.

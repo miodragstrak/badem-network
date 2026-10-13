@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --badem-bg: #f8f8f1;
+  --badem-surface: #fffef9;
+  --badem-ink: #172e27;
+  --badem-muted: #64716a;
+  --badem-ink-soft: #4d5e4e;
+  --badem-green: #172e27;
+  --badem-green-hover: #2f4c3c;
+  --badem-green-soft: #eaf0df;
+  --badem-accent: #4b6830;
+  --badem-lime: #d8ef8d;
+  --badem-border: #dce0d5;
+  --badem-border-accent: #c4d3ae;
+  --badem-border-control: #71856c;
+  --badem-image-bg: #e5e8dc;
+  --badem-technical: #142a24;
+  --badem-technical-soft: #233b2e;
+  --badem-on-dark: #e7eedf;
+  --badem-muted-on-dark: #b7c4ac;
+  --badem-border-on-dark: #506244;
+  --badem-danger: #8a382b;
+  --badem-danger-soft: #fff1ec;
+  --badem-danger-border: #e88d7e;
+  --badem-font-body: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --badem-font-heading: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --badem-page-width: 1240px;
+  --badem-logo-width: 220px;
+  --badem-logo-width-mobile: 170px;
+  --badem-radius-button: 4px;
+  --badem-radius-control: 5px;
+  --badem-radius-card: 8px;
+}
