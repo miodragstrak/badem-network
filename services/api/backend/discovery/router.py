@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from backend.discovery.models import Database, initialize
+from backend.discovery.providers import create_provider
 from backend.discovery.schemas import (
     DiscoveryResult, ManufacturingRequest, ManufacturingSpecification, ManufacturingSpecificationPayload,
     NewManufacturingRequest, PartnerCandidateDetail,
@@ -33,7 +34,7 @@ class DiscoveryRoute(APIRoute):
 
 def create_discovery_router(db: Database, require_admin: Callable[[str | None], None]) -> APIRouter:
     initialize(db)
-    service = DiscoveryService(db)
+    service = DiscoveryService(db, provider=create_provider())
 
     def authenticate(x_admin_key: str | None = Header(default=None)):
         require_admin(x_admin_key)

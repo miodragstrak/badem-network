@@ -392,11 +392,12 @@ questions needed to wire the adapter.
 - Jobs store a supplied file SHA-256, not the manufacturing file itself.
 - Buyer rejection, timeout, and dispute handling are not implemented.
 
-## Manufacturing Discovery Milestone 01
+## Manufacturing Discovery
 
-`backend/discovery/` adds an isolated, mock-only manufacturing discovery flow.
-It does not create execution jobs, contact machines, verify suppliers, perform
-cryptographic operations, or call Google Places, scraping targets or Solana.
+`backend/discovery/` adds an isolated manufacturing discovery flow. Milestone 01
+introduced the mock provider; Milestone 02 adds opt-in Google Places searches.
+Discovery does not create execution jobs, contact machines, verify suppliers,
+perform cryptographic operations, scrape websites, or call Solana.
 The existing proof, event and anchor routes are unchanged. These new routes
 reuse the API's SQLite transaction helper and `X-Admin-Key` authentication.
 
@@ -406,7 +407,7 @@ reuse the API's SQLite transaction helper and `X-Admin-Key` authentication.
 | `GET /api/manufacturing-requests/{id}` | Read the manufacturing request |
 | `POST /api/manufacturing-requests/{id}/specification` | Store structured JSON; HTTP 201 initially, 200 on replacement |
 | `GET /api/manufacturing-requests/{id}/specification` | Read the current specification and its JSON `payload` |
-| `POST /api/manufacturing-requests/{id}/discover` | Build and persist ranked mock partner candidates |
+| `POST /api/manufacturing-requests/{id}/discover` | Build and persist ranked public-data partner candidates |
 | `GET /api/manufacturing-requests/{id}/candidates` | Read persisted rankings without running discovery |
 | `GET /api/partner-candidates/{candidate_id}` | Read a detailed `partner_profile` |
 
@@ -415,12 +416,15 @@ The four additive tables are `manufacturing_requests`,
 `public_capacity_profiles`. Specifications and derived profiles are stored as
 JSON, with foreign keys and one current specification/profile per parent.
 Public Capacity Profile is the internal derived model, not a Google business
-profile. Future `GOOGLE_PLACES` source storage is reserved, not integrated.
+profile. Sources are `MOCK_PUBLIC_DATA` or `GOOGLE_PLACES`; no schema migration
+is required for the Google provider.
 
 State flow: `DRAFT -> SPECIFIED -> DISCOVERY_READY -> DISCOVERY_COMPLETE`.
-Discovery readiness and completion occur in one transaction; failures roll back
-to the previous status and keep prior results. Discovery without a specification
-returns 409. Unknown entities and missing specifications return 404.
+Provider I/O runs outside SQLite write transactions. Discovery readiness,
+replacement and completion commit atomically; failures keep the previous status
+and results. A specification changed during a search returns 409 instead of
+persisting stale rankings. Discovery without a specification also returns 409.
+Unknown entities and missing specifications return 404.
 
 A specification requires nonempty `process` and `materials` string lists;
 taxonomy terms are not an enum. Quantity, dimensions, requirements and location
@@ -457,12 +461,136 @@ Labels are `Strong potential fit` (82-100), `Potential fit` (60-81), `Possible f
 availability and output quality are not validated by this heuristic.
 
 Rediscovery atomically replaces only that request's results. Candidate/profile
-IDs and creation times remain stable for unchanged source fixtures;
-`last_refreshed_at` advances. Ranking ties use stable source fixture IDs.
+IDs and creation times remain stable for unchanged source/place IDs;
+`last_refreshed_at` advances. Ranking ties use source place IDs.
 Replacing a specification keeps its ID and creation time, returns the request
 to `SPECIFIED`, and deletes stale candidates/profiles until discovery is rerun.
 There is no result history, onboarding, outreach, quote, payment or marketplace
 workflow in this milestone.
+
+### Google Places Discovery (Milestone 02)
+
+| Environment variable | Behavior |
+| --- | --- |
+| `BADEM_DISCOVERY_PROVIDER` | `mock` (default) or `google_places`; read at API startup |
+| `GOOGLE_PLACES_API_KEY` | Required only for `google_places`; server-side environment only |
+
+Google selection without a nonempty key, or an unknown provider name, raises a
+clear startup configuration error. It never silently falls back to fictional
+results. Restart after changing provider configuration. Existing API/device
+environment settings and admin authentication are still required. Enable Places
+API (New) and billing in the Google project, and restrict the server key to the
+appropriate API and backend deployment. Never put it in frontend configuration,
+source control, a URL or application logs.
+
+Both providers implement `discover(specification) -> list[PublicPartnerData]`.
+The service derives Public Capacity Profiles and applies the same scoring
+weights/thresholds regardless of source. Google results are `GOOGLE_PLACES`,
+`is_mock: false`, and carry the actual Place ID in detailed `source_place_id`.
+Stored nonempty results retain their source even after switching providers.
+For empty results, `provider` identifies the currently configured provider;
+the existing domain does not store historical provider metadata for empty runs.
+Every candidate/profile remains `PUBLIC_DATA_ONLY` with the unchanged disclaimer:
+"Potential fit based on public data. Production capability has not been verified."
+Google Places is only a discovery source, not a capability inventory or supplier
+verification service.
+
+The deterministic query builder uses structured specification processes,
+materials and explicit city/country. It ignores quantity, dimensions and free-text
+requirements; it does not parse request `location_text`. Supported query families
+include laser engraving/cutting, CNC machining/wood, 3D printing, prototyping and
+maker workshops. Multiple processes share the query budget round-robin, in
+stable normalized process order. Unknown-only process taxonomies return an
+empty completed discovery without a generic paid search. Canonical scoring
+taxonomy remains unchanged (`cnc_milling`, for example).
+
+For laser engraving on plywood in Belgrade, RS, the queries are:
+
+```text
+laser engraving service wood Belgrade RS
+laser engraving workshop wood Belgrade RS
+custom laser engraving wood Belgrade RS
+```
+
+CNC on wood starts with `CNC wood machining service Belgrade RS`; 3D printing
+starts with `3D printing service Belgrade RS`.
+
+The client sends `POST https://places.googleapis.com/v1/places:searchText` with
+`pageSize: 5`, `languageCode: en` and this exact `X-Goog-FieldMask`:
+
+```text
+places.id,places.displayName,places.addressComponents,places.primaryType,places.types
+```
+
+Structured address components provide locality and country without guessing from
+a formatted address or assigning the requested location to search results.
+Unused formatted addresses and coordinates are not requested. Names, address
+components and type fields use the Text Search Pro tier, not ID-only pricing;
+see [Google's field-mask and billing documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).
+No wildcard, website, reviews, ratings, phone numbers, opening hours, photos,
+Place Details enrichment, pagination or automatic retries are used.
+
+Hard limits (constants, not unbounded environment overrides):
+
+- Maximum 3 queries per discovery run.
+- Maximum 5 results per query, also enforced when reading the response.
+- Maximum 10 unique candidates; stop searching once reached.
+- HTTPX timeout of 5 seconds for each connect/read/write/pool operation.
+- Clients close after each request; environment proxy settings are ignored.
+
+Place IDs deduplicate listings across queries; the first valid listing wins.
+Normalization uses returned names, structured locations and listing types only.
+Types populate the existing public specialization signals; explicit material
+words in names supply conservative material keywords. Business names/types
+may suggest a process; search query terms never become evidence. No equipment,
+website/review evidence, activity, capacity or availability is invented. Missing
+signals receive no score, so these minimal Google profiles often have low
+confidence and lower scores than richer fictional fixtures. Only existing
+normalized profile fields and source IDs are persisted, not raw Places payloads.
+
+Timeouts return HTTP 504; upstream non-2xx, connection/protocol failures, invalid
+JSON and malformed response containers return HTTP 502 with sanitized messages.
+Upstream bodies, headers and credentials are not returned or logged. Valid
+empty searches (including Google's omitted `places` field) complete normally.
+Malformed individual entries/IDs are skipped; missing optional fields are
+tolerated without inferring location or capabilities. A failed refresh never
+partially replaces candidates or changes the completed request's status.
+
+Before public production use, review applicable Google Maps Platform storage,
+attribution, Terms of Use and Privacy Policy requirements. Place IDs are exempt
+from caching restrictions; that exemption does not automatically cover business
+names/locations/types retained inside these derived profiles. This prototype's
+existing persistent profile model has no automatic expiry or attribution UI;
+do not assume it meets production retention/display rules merely because raw
+payloads are not stored. See [Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies).
+
+### Try Google Discovery Locally
+
+From `services/api`, after the existing Local Setup environment is configured:
+
+```bash
+export BADEM_DISCOVERY_PROVIDER=google_places
+read -r -s -p 'Google Places API key: ' GOOGLE_PLACES_API_KEY
+printf '\n'
+export GOOGLE_PLACES_API_KEY
+.venv/bin/uvicorn backend.app:create_app --factory --reload
+```
+
+In another terminal with the same admin key, create and specify a request using
+the curl examples below, then run:
+
+```bash
+REQUEST_ID='<id of a request with a stored specification>'
+curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/discover"
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+  "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/candidates"
+```
+
+The curl call triggers bounded, potentially billable Google requests. Automated
+tests instead use `httpx.MockTransport`; shared test fixtures clear discovery
+credentials/configuration and block real sync/async HTTP transports. No live
+Google or RPC validation is performed by the test suite.
 
 ### Try Discovery With Curl
 
@@ -494,6 +622,6 @@ curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
   "http://127.0.0.1:8000/api/partner-candidates/$CANDIDATE_ID"
 ```
 
-Discovery tests: `.venv/bin/python -m pytest -q tests/test_discovery.py tests/test_discovery_scoring.py`.
+Discovery tests: `.venv/bin/python -m pytest -q tests/test_discovery*.py tests/test_google_discovery.py`.
 The complete `.venv/bin/python -m pytest -q` suite also exercises the unchanged
 Proof-of-Production and mocked Solana anchoring flows, without network access.

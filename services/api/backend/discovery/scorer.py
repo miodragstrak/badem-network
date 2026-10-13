@@ -66,21 +66,24 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
     elif country and same_country:
         breakdown["location_suitability"] = 5
 
+    prefix = "Mock" if profile["is_mock"] else "Google Places"
+    source = "mock" if profile["is_mock"] else "Google Places"
     reasoning = [
-        "Mock public signals suggest a potential process fit." if breakdown["process_match"] else
-        "No matching process signal in the mock public data.",
-        "Requested materials appear in mock public signals." if breakdown["material_signal"] else
-        "No matching material signal in the mock public data.",
+        f"{prefix} public signals suggest a potential process fit." if breakdown["process_match"] else
+        f"No matching process signal in the {source} public data.",
+        f"Requested materials appear in {source} public signals." if breakdown["material_signal"] else
+        f"No matching material signal in the {source} public data.",
     ]
     if breakdown["equipment_signal"]:
-        reasoning.append("Relevant equipment appears in mock public signals; availability is unverified.")
+        reasoning.append(f"Relevant equipment appears in {source} public signals; availability is unverified.")
     if breakdown["business_specialization"]:
-        reasoning.append("Mock public specialization signals align with the requested process.")
+        reasoning.append(f"{prefix} public specialization signals align with the requested process.")
     if breakdown["location_suitability"]:
-        reasoning.append("Mock location matches the requested city." if breakdown["location_suitability"] == 10 else
-                         "Mock location matches the requested country; city-level suitability is not established.")
+        reasoning.append(f"{prefix} location matches the requested city." if breakdown["location_suitability"] == 10 else
+                         f"{prefix} location matches the requested country; city-level suitability is not established.")
     if breakdown["public_activity_signal"]:
-        reasoning.append("The fixture includes a public activity signal.")
+        reasoning.append("The fixture includes a public activity signal." if profile["is_mock"] else
+                         "The listing includes a public activity signal.")
     reasoning.append("Quantity, dimensions and current production capacity have not been validated.")
     total = sum(breakdown.values())
     return FitScore(total, fit_label(total), breakdown, reasoning)

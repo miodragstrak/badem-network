@@ -1,4 +1,4 @@
-"""Transactional manufacturing specification -> mock discovery -> ranked partner profiles."""
+"""Manufacturing specification -> source discovery -> atomically persisted rankings."""
 
 import json
 import time
@@ -9,13 +9,14 @@ from fastapi import HTTPException
 
 from backend.discovery import models
 from backend.discovery.mock_provider import MockDiscoveryProvider
+from backend.discovery.places_client import DiscoveryProviderError
 from backend.discovery.profile_builder import build_profile
 from backend.discovery.schemas import ManufacturingSpecificationPayload, NewManufacturingRequest
 from backend.discovery.scorer import score_profile
 
 
 class DiscoveryService:
-    def __init__(self, db: models.Database, provider: MockDiscoveryProvider | None = None,
+    def __init__(self, db: models.Database, provider: models.DiscoveryProvider | None = None,
                  clock: Callable[[], float] = time.time):
         self.db = db
         self.provider = provider if provider is not None else MockDiscoveryProvider()
@@ -67,7 +68,8 @@ class DiscoveryService:
             "fit_label": row["fit_label"], "fit_summary": profile["fit_summary"],
             "confidence": row["confidence"], "reasoning": profile["reasoning"],
             "score_breakdown": profile["score_breakdown"], "source": row["source"],
-            "is_mock": True, "verification_status": row["verification_status"], "disclaimer": profile["disclaimer"],
+            "is_mock": row["source"] == models.MOCK_SOURCE,
+            "verification_status": row["verification_status"], "disclaimer": profile["disclaimer"],
         }
         if detailed:
             result.update({"source_place_id": row["source_place_id"],
@@ -76,29 +78,40 @@ class DiscoveryService:
         return result
 
     def results(self, connection, request: dict) -> dict:
-        return {"request_id": request["id"], "status": request["status"], "provider": models.MOCK_SOURCE,
-                "candidates": [self.candidate_response(row) for row in models.get_candidates(connection, request["id"])]}
+        rows = models.get_candidates(connection, request["id"])
+        source = rows[0]["source"] if rows else getattr(self.provider, "source", models.MOCK_SOURCE)
+        return {"request_id": request["id"], "status": request["status"], "provider": source,
+                "candidates": [self.candidate_response(row) for row in rows]}
 
     def discover(self, request_id: str) -> dict:
         with self.db() as connection:
-            request = self.require_request(connection, request_id)
+            self.require_request(connection, request_id)
             specification = models.get_specification(connection, request_id)
             if specification is None:
                 raise HTTPException(409, "Store a manufacturing specification before discovery")
+        # Do not hold a SQLite write lock during external provider I/O.
+        try:
+            partners = self.provider.discover(specification["payload"])
+        except DiscoveryProviderError as error:
+            raise HTTPException(error.status_code, str(error)) from None
+        results = []
+        for partner in partners:
+            profile = build_profile(partner)
+            score = score_profile(specification["payload"], profile)
+            profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
+                            "fit_summary": f"{score.fit_label} based on public data",
+                            "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
+            candidate_id = str(uuid.uuid5(uuid.NAMESPACE_URL,
+                f"badem:discovery:{request_id}:{partner.source}:{partner.source_place_id}"))
+            results.append({"id": candidate_id, "source": partner.source,
+                            "source_place_id": partner.source_place_id,
+                            "profile_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"badem:capacity-profile:{candidate_id}")),
+                            "profile": profile})
+        with self.db() as connection:
+            request = self.require_request(connection, request_id)
+            if models.get_specification(connection, request_id) != specification:
+                raise HTTPException(409, "Manufacturing specification changed during discovery; retry")
             models.set_status(connection, request_id, "DISCOVERY_READY")
-            results = []
-            for partner in self.provider.discover(specification["payload"]):
-                profile = build_profile(partner)
-                score = score_profile(specification["payload"], profile)
-                profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
-                                "fit_summary": f"{score.fit_label} based on public data",
-                                "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
-                candidate_id = str(uuid.uuid5(uuid.NAMESPACE_URL,
-                    f"badem:discovery:{request_id}:{partner.source}:{partner.source_place_id}"))
-                results.append({"id": candidate_id, "source": partner.source,
-                                "source_place_id": partner.source_place_id,
-                                "profile_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"badem:capacity-profile:{candidate_id}")),
-                                "profile": profile})
             models.replace_candidates(connection, request_id, results, int(self.clock()))
             models.set_status(connection, request_id, "DISCOVERY_COMPLETE")
             request["status"] = "DISCOVERY_COMPLETE"

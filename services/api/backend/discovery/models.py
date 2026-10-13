@@ -7,12 +7,14 @@ import sqlite3
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from typing import Protocol
 
 
 Database = Callable[[], AbstractContextManager[sqlite3.Connection]]
 DISCLAIMER = "Potential fit based on public data. Production capability has not been verified."
 VERIFICATION_STATUS = "PUBLIC_DATA_ONLY"
 MOCK_SOURCE = "MOCK_PUBLIC_DATA"
+GOOGLE_SOURCE = "GOOGLE_PLACES"
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS manufacturing_requests (
@@ -69,6 +71,10 @@ class PublicPartnerData:
     specializations: tuple[str, ...] = ()
     public_activity: bool = False
     source: str = MOCK_SOURCE
+
+
+class DiscoveryProvider(Protocol):
+    def discover(self, specification: dict) -> list[PublicPartnerData]: ...
 
 
 def initialize(db: Database) -> None:

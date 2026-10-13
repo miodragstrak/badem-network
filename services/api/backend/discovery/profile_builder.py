@@ -2,7 +2,7 @@
 
 import re
 
-from backend.discovery.models import DISCLAIMER, VERIFICATION_STATUS, PublicPartnerData
+from backend.discovery.models import DISCLAIMER, MOCK_SOURCE, VERIFICATION_STATUS, PublicPartnerData
 
 
 def normalize_term(value: str) -> str:
@@ -20,12 +20,15 @@ PROCESS_SIGNALS = {
 
 
 def build_profile(partner: PublicPartnerData) -> dict:
+    is_mock = partner.source == MOCK_SOURCE
+    prefix = "mock" if is_mock else "Google Places"
+    name_source = f"{prefix} business name"
     sources = {
-        "mock business name": re.findall(r"[a-z0-9]+", partner.display_name.casefold()),
-        "mock public website": partner.website_keywords,
-        "mock public keyword signal": partner.review_keywords,
-        "mock equipment signal": partner.equipment,
-        "mock specialization signal": partner.specializations,
+        name_source: re.findall(r"[a-z0-9]+", partner.display_name.casefold()),
+        f"{prefix} public website": partner.website_keywords,
+        f"{prefix} public keyword signal": partner.review_keywords,
+        f"{prefix} equipment signal": partner.equipment,
+        f"{prefix} specialization signal" if is_mock else "Google Places public type signal": partner.specializations,
     }
     normalized = {name: {normalize_term(value) for value in values} for name, values in sources.items()}
     all_signals = set().union(*normalized.values())
@@ -40,10 +43,10 @@ def build_profile(partner: PublicPartnerData) -> dict:
     confidence = "medium" if any(item["confidence"] >= .65 for item in capabilities) else "low"
     return {
         "display_name": partner.display_name,
-        "location_summary": f"{partner.city}, {partner.country}",
+        "location_summary": ", ".join(value for value in (partner.city, partner.country) if value) or "Location unavailable",
         "location": {"city": partner.city, "country": partner.country},
         "signals": {
-            "laser_related_name": "laser" in normalized["mock business name"],
+            "laser_related_name": "laser" in normalized[name_source],
             "website_signal": bool(partner.website_keywords),
             "review_keyword_signals": list(partner.review_keywords),
             "material_signals": list(partner.materials),
@@ -54,7 +57,7 @@ def build_profile(partner: PublicPartnerData) -> dict:
         "inferred_capabilities": capabilities,
         "confidence": confidence,
         "source": partner.source,
-        "is_mock": True,
+        "is_mock": is_mock,
         "verification_status": VERIFICATION_STATUS,
         "disclaimer": DISCLAIMER,
     }

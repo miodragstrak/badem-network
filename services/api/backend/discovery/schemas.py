@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 RequestStatus = Literal["DRAFT", "SPECIFIED", "DISCOVERY_READY", "DISCOVERY_COMPLETE"]
 FitLabel = Literal["Strong potential fit", "Potential fit", "Possible fit", "Low-confidence fit"]
+DiscoverySource = Literal["MOCK_PUBLIC_DATA", "GOOGLE_PLACES"]
 Quantity = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
 Term = Annotated[str, Field(min_length=1, max_length=120)]
 
@@ -74,8 +75,8 @@ class PartnerCandidate(BaseModel):
     confidence: Literal["low", "medium"]
     reasoning: list[str]
     score_breakdown: dict[str, int]
-    source: Literal["MOCK_PUBLIC_DATA"]
-    is_mock: Literal[True]
+    source: DiscoverySource
+    is_mock: bool
     verification_status: Literal["PUBLIC_DATA_ONLY"]
     disclaimer: str
 
@@ -91,5 +92,5 @@ class PartnerCandidateDetail(PartnerCandidate):
 class DiscoveryResult(BaseModel):
     request_id: str
     status: RequestStatus
-    provider: Literal["MOCK_PUBLIC_DATA"]
+    provider: DiscoverySource
     candidates: list[PartnerCandidate]

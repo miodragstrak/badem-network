@@ -1,10 +1,11 @@
 """Fixed fictional source fixtures; no scraping, Google calls or live business data."""
 
-from backend.discovery.models import PublicPartnerData
+from backend.discovery.models import MOCK_SOURCE, PublicPartnerData
 from backend.discovery.profile_builder import normalize_term
 
 
 class MockDiscoveryProvider:
+    source = MOCK_SOURCE
     partners = (
         PublicPartnerData(
             "mock-laser-belgrade", "Laser Studio Belgrade", "Belgrade", "RS",
