@@ -1,6 +1,8 @@
 # BADEM public website
 
-Independent React/Vite landing application for `badem.network`. The product demo remains in `apps/web`.
+Independent React/Vite landing application for `badem.network`. The product app
+remains in `apps/web`, with a home at `/`, Discovery at `/discovery` and the
+Proof-of-Production demo at `/proof`.
 
 ## Local development
 
@@ -24,8 +26,11 @@ the local demo during development. Never commit this file. URL-policy tests:
   local-only hostnames, malformed URLs and embedded credentials are rejected.
 - Validation occurs in the Vite configuration before replacement, so rejected
   demo URLs are not embedded in the production JavaScript.
+- With a valid URL, the hero CTA is "Open BADEM" and opens the configured app.
+  The prototype CTA is "View Proof of Production demo"; its `/proof` URL is
+  derived from that same app origin, without query parameters or fragments.
 - An absent or rejected URL keeps the hero CTA linked to `#prototype` and hides
-  the "Open production demo" button. Visitors see no configuration messages.
+  the Proof demo button. Visitors see no configuration messages.
 - Host validation does not check DNS, TLS or demo availability; verify those
   separately before enabling a public demo URL.
 

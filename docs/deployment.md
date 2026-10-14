@@ -24,7 +24,8 @@ URL/key and live proof configuration. Both apps disable automatic `VITE_*`
 exposure and explicitly define approved public variables. Even a build with
 `--mode development` strips the local key and unknown VITE values.
 
-Public `/`, `?mode=debug` and `?mode=fallback` use the existing documented proof
+Public `/` is the app home and `/discovery` is the partner wizard. `/proof`,
+`/proof?mode=debug` and `/proof?mode=fallback` use the existing documented proof
 receipt. No live proof, health, jobs, device ingestion or anchor routes are
 publicly proxied. Trusted local live proof reads remain available. Receipt
 values, transaction links and proof protocols are unchanged.
@@ -50,7 +51,9 @@ the landing public-HTTPS URL validator. No CSS duplication is needed. See the
 Committed `vercel.json` files specify build settings. Web rewrites place the four
 API routes before SPA fallback, keep `/discovery` directly addressable, reject
 unknown `/badem-api` routes, and exclude `/api` from SPA fallback. The function's
-path parameter is strictly allowlisted; it is never an arbitrary URL.
+destination path is strictly allowlisted; it is never an arbitrary URL. UUIDs
+are interpolated into path segments under `/api/discovery/`, not query strings.
+Explicit `[id]` function files support the Vite app's filesystem routing.
 
 Confirm Fluid compute supports the configured 120s budget; see
 [Vercel function limits](https://vercel.com/docs/functions/limitations).
@@ -100,7 +103,10 @@ GET  /api/partner-candidates/{UUID}
 ```
 
 UUID format matches generated backend IDs. Other paths/methods, duplicate/extra
-routing query parameters, traversal and URL overrides fail before upstream I/O.
+query parameters, traversal and URL overrides fail before upstream I/O. The only
+accepted query metadata is Vercel's filesystem `id`, which must agree with the
+destination UUID; it cannot choose a different upstream path. Legacy `?path=`
+routing is rejected.
 Incoming auth/cookies are not forwarded. JSON requests are capped at 64 KiB and
 responses at 1 MiB. Redirects are never followed. The only target is the fixed,
 server-configured public HTTPS origin. Upstream timeout is 110s, below the 120s

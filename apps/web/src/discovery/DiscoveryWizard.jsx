@@ -25,6 +25,7 @@ import {
   validateSpecification,
 } from './forms.js'
 import PartnerProfile from './PartnerProfile.jsx'
+import AppNavigation from '../AppNavigation.jsx'
 import '../App.css'
 import './discovery.css'
 
@@ -497,9 +498,9 @@ export default function DiscoveryWizard() {
   }
 
   return (
-    <main className="discovery-shell">
+    <main id="app-main" className="discovery-shell" tabIndex="-1">
       <header className="discovery-topbar">
-        <a className="brand" href="/" aria-label="BADEM proof demo">
+        <a className="brand" href="/" aria-label="BADEM home">
           <img
             src="/brand/badem-three-layer-lockup.png"
             alt="aiBADEM - Identity, Network, Manufacturing"
@@ -510,10 +511,7 @@ export default function DiscoveryWizard() {
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>
-        <a className="discovery-demo-link" href="/">
-          <ArrowLeft aria-hidden="true" />
-          Proof of Production demo
-        </a>
+        <AppNavigation current="discovery" />
       </header>
       <div className="discovery-container">
         <Progress step={step} />

@@ -18,19 +18,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  flex-wrap: wrap;
   padding-bottom: 28px;
   border-bottom: 1px solid var(--line);
-}
-.discovery-demo-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 0.875rem;
-}
-.discovery-demo-link:hover {
-  color: var(--text);
 }
 .discovery-container {
   max-width: 1120px;

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import './App.css'
 import { browserApiConfig } from './api-config.js'
+import AppNavigation from './AppNavigation.jsx'
 
 const DEMO_JOB = {
   id: 'BADEM-JOB-0042',
@@ -517,15 +518,18 @@ function App() {
   const currentIndex = stageIndex(demoState.currentStage)
 
   return (
-    <main className="demo-shell">
+    <main id="app-main" className="demo-shell" tabIndex="-1">
       <header className="demo-topbar">
-        <a className="brand" href="/" aria-label="BADEM demo home">
+        <a className="brand" href="/" aria-label="BADEM home">
           <BrandMark />
           <span>
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>
-        <SourcePill demoState={demoState} loading={loading} debugMode={config.debugMode} />
+        <div className="demo-topbar-navigation">
+          <AppNavigation current="proof" />
+          <SourcePill demoState={demoState} loading={loading} debugMode={config.debugMode} />
+        </div>
       </header>
 
       <div className="hero-grid">

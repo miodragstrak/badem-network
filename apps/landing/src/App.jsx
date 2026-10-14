@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { ArrowUpRight, ArrowRight, Cpu, Fingerprint, ShieldCheck, Layers3, Menu, X, Check, Radio } from 'lucide-react'
 import ProductionWalkthrough from './ProductionWalkthrough.jsx'
+import { proofDemoUrl } from './app-links.js'
 
 const repository = 'https://github.com/miodragstrak/badem-network'
 const demoUrl = import.meta.env.VITE_DEMO_URL?.trim()
+const proofUrl = proofDemoUrl(demoUrl)
 const steps = [
   ['01', 'Observe the controller', 'The DLC32 / ESP32 reference node is designed to observe controller status and associate events with a configured identity.'],
   ['02', 'Construct the record', 'A Run/Hold-to-Idle transition is treated as a completion event. Its metadata supplies the deterministic demo hash.'],
@@ -32,7 +34,7 @@ export default function App() {
           <h1>Manufacturing,<br />connected.<br /><span>Production,<br />verifiable.</span></h1>
           <p className="intro">BADEM builds verifiable production records around a DLC32 / ESP32 reference integration.</p>
           <p className="hero-detail">Connect physical work to signed production records - building the foundation for an AI-powered manufacturing network.</p>
-          <div className="actions"><a className="button primary" href={demoUrl || '#prototype'}>{demoUrl ? 'Explore the demo' : 'Explore the prototype'} <ArrowUpRight size={19} /></a><a className="text-link" href="#how-it-works">See how it works <ArrowRight size={18} /></a></div>
+          <div className="actions"><a className="button primary" href={demoUrl || '#prototype'}>{demoUrl ? 'Open BADEM' : 'Explore the prototype'} <ArrowUpRight size={19} /></a><a className="text-link" href="#how-it-works">See how it works <ArrowRight size={18} /></a></div>
           <p className="hero-note">Built around existing equipment. Designed for verifiable work.</p>
         </div>
         <div className="hero-visual">
@@ -80,7 +82,7 @@ export default function App() {
             <figcaption>Prototype enclosure development.</figcaption>
           </figure>
         </div>
-        <div className="prototype-grid"><div><h3>Implemented components</h3>{['Machine status detection', 'Deterministic proof hashing', 'Ed25519 device signing', 'Backend signature verification', 'Solana anchoring integration'].map(item => <p className="check-line" key={item}><Check size={18} />{item}</p>)}</div><div><h3>Next steps</h3><p>Customer acceptance, inbound job delivery, broader machine integrations and AI-based job structuring and routing.</p><p className="prototype-note">The current PoC focuses on the machine-to-proof path. The complete manufacturing marketplace is our next-stage vision.</p><div className="actions"><a className="text-link" href={repository} target="_blank" rel="noreferrer">Inspect the implementation <ArrowUpRight size={18} /></a>{demoUrl && <a className="button primary" href={demoUrl}>Open production demo <ArrowUpRight size={19} /></a>}</div></div></div>
+        <div className="prototype-grid"><div><h3>Implemented components</h3>{['Machine status detection', 'Deterministic proof hashing', 'Ed25519 device signing', 'Backend signature verification', 'Solana anchoring integration'].map(item => <p className="check-line" key={item}><Check size={18} />{item}</p>)}</div><div><h3>Next steps</h3><p>Customer acceptance, inbound job delivery, broader machine integrations and AI-based job structuring and routing.</p><p className="prototype-note">The current PoC focuses on the machine-to-proof path. The complete manufacturing marketplace is our next-stage vision.</p><div className="actions"><a className="text-link" href={repository} target="_blank" rel="noreferrer">Inspect the implementation <ArrowUpRight size={18} /></a>{proofUrl && <a className="button primary" href={proofUrl}>View Proof of Production demo <ArrowUpRight size={19} /></a>}</div></div></div>
       </section>
       <section id="network" className="network-section"><div className="section wrap">
         <p className="eyebrow">06 / THE NETWORK VISION</p><h2>From a production request<br />to the right machine.</h2><p className="network-intro">We are building toward a network where AI structures manufacturing requests, jobs reach compatible machines, and production records support trust between buyers and workshops.</p>

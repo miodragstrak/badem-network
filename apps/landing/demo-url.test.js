@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { resolveDemoUrl } from './demo-url.js'
+import { proofDemoUrl } from './src/app-links.js'
 
 for (const candidate of [
   undefined, '', '   ', 'not a URL', '/demo', '//demo.badem.network',
@@ -37,4 +38,21 @@ test('development preserves the local demo CTA', () => {
 
 test('development without a demo URL uses the prototype fallback', () => {
   assert.equal(resolveDemoUrl(undefined, false), '')
+})
+
+test('Proof CTA uses the configured app origin and the /proof route', () => {
+  for (const value of [
+    'https://app.badem.network',
+    'https://app.badem.network/',
+    'https://app.badem.network/discovery?mode=debug#prototype',
+  ]) assert.equal(proofDemoUrl(resolveDemoUrl(value, true)), 'https://app.badem.network/proof')
+  assert.equal(proofDemoUrl(resolveDemoUrl('http://localhost:5173', false)), 'http://localhost:5173/proof')
+})
+
+test('Proof CTA remains hidden for missing or rejected production app URLs', () => {
+  for (const value of [undefined, '', 'not a URL', 'http://localhost:5173', 'https://127.0.0.1', 'javascript:alert(1)']) {
+    assert.equal(proofDemoUrl(resolveDemoUrl(value, true)), '')
+  }
+  assert.equal(proofDemoUrl('not a URL'), '')
+  assert.equal(proofDemoUrl('javascript:alert(1)'), '')
 })

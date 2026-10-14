@@ -1,6 +1,25 @@
-# BADEM Web/Demo Application
+# BADEM Manufacturing Network App
 
-React/Vite web demo for BADEM, migrated from `cube-depin` with its existing UI and functionality.
+React/Vite product entry point for BADEM, preserving Discovery and the
+Proof-of-Production demo.
+
+## App Routes
+
+- `/`: focused app home with Discovery and Proof entry cards and the compact
+  DISCOVER -> QUALIFY -> PRODUCE -> PROVE product flow. Qualification is not
+  implemented by this navigation milestone.
+- `/discovery`: existing production partner wizard and unchanged API flow.
+- `/proof`: existing public Proof demo, including `?mode=debug` and
+  `?mode=fallback`. Old root demo URLs now display the app home; move demo
+  query parameters to `/proof`.
+
+Navigation uses normal same-origin links; all three paths support direct
+refresh through the existing Vercel SPA fallback. Unknown app paths show the
+home's product links with an unavailable-page heading, not a Proof receipt.
+Server function routes and the discovery gateway allowlist are unchanged.
+The HTML metadata and favicon use BADEM; the favicon is an exact copy of the
+existing landing brand mark. No authentication, accounts, shortlist or
+qualification features are added.
 
 Run from `apps/web`:
 
@@ -70,7 +89,7 @@ Before public use of Google-derived profiles, review the backend documentation's
 Google attribution, retention and privacy limitations; this UI identifies the
 source but does not resolve those deployment requirements.
 
-The existing `/` Proof-of-Production demo and its `?mode=debug` and
+The existing `/proof` Proof-of-Production demo and its `?mode=debug` and
 `?mode=fallback` modes remain available. Public builds use the documented receipt
 without live proof requests; trusted local live reads remain available.
 Discovery ignores proof-demo fallback
@@ -86,7 +105,8 @@ npm run build
 ```
 
 Tests use Node's built-in runner, with injected fetch responses for API errors,
-ordering, empty results, cancellation and validation. No new dependencies.
+ordering, empty results, cancellation and validation. Routing tests use the
+existing Vercel rewrite compiler. No new dependencies for this milestone.
 
 ## Visual System
 
