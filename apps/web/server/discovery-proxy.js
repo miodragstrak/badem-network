@@ -1,5 +1,6 @@
 import { env as runtimeEnv } from 'node:process'
-import { resolveDemoUrl } from '../../landing/demo-url.js'
+import { GatewayError as ProxyError, apiOrigin, gatewayOrigins, requireGatewayOrigin, reply } from './gateway-http.js'
+import { authenticateBeta, reserveDiscovery } from './private-beta.js'
 
 const MAX_REQUEST_BYTES = 65536
 const MAX_RESPONSE_BYTES = 1048576
@@ -14,30 +15,6 @@ const ENDPOINTS = [
   { path: new RegExp(`^manufacturing-requests/${UUID}/discover$`), method: 'POST', body: false },
   { path: new RegExp(`^partner-candidates/${UUID}$`), method: 'GET', body: false },
 ]
-
-class ProxyError extends Error {
-  constructor(status, message) {
-    super(message)
-    this.status = status
-  }
-}
-
-function apiOrigin(value) {
-  if (!value || !resolveDemoUrl(value, true)) return ''
-  const url = new URL(value)
-  return url.pathname === '/' && !url.search && !url.hash ? url.origin : ''
-}
-
-function origins(env) {
-  const allowed = ['https://app.badem.network', 'https://badem.network']
-  for (const host of [env.VERCEL_URL, env.VERCEL_PROJECT_PRODUCTION_URL]) {
-    if (host && !/[/?#@]/.test(host)) {
-      const origin = apiOrigin(`https://${host}`)
-      if (origin) allowed.push(origin)
-    }
-  }
-  return allowed
-}
 
 function discoveryPath(request) {
   const rawUrl = request.url
@@ -108,6 +85,7 @@ async function requestBody(request, needsBody) {
     if (typeof body === 'string') body = JSON.parse(body)
     if (!body || typeof body !== 'object' || Array.isArray(body))
       throw new Error('Invalid JSON object')
+    if (Object.hasOwn(body, 'owner_user_id')) throw new ProxyError(400, 'Invalid request values.')
     const values = [body]
     while (values.length) {
       const value = values.pop()
@@ -125,7 +103,7 @@ async function requestBody(request, needsBody) {
   }
 }
 
-async function responseJson(response, secret) {
+async function responseJson(response, secrets) {
   const chunks = []
   let bytes = 0
   if (!response.body) throw new ProxyError(502, 'The BADEM service returned an invalid response.')
@@ -144,7 +122,7 @@ async function responseJson(response, secret) {
   const strings = [payload]
   while (strings.length) {
     const value = strings.pop()
-    if (typeof value === 'string' && (value.includes(secret) || /AIza[\w-]{35}/.test(value))) {
+    if (typeof value === 'string' && (secrets.some((secret) => value.includes(secret)) || /AIza[\w-]{35}/.test(value) || /sb_secret_[\w-]{16,}/.test(value))) {
       throw new ProxyError(502, 'The BADEM service returned an invalid response.')
     }
     if (value && typeof value === 'object') {
@@ -157,20 +135,11 @@ async function responseJson(response, secret) {
   return payload
 }
 
-function reply(response, status, payload) {
-  if (response.writableEnded || response.destroyed) return
-  response.statusCode = status
-  response.setHeader('Content-Type', 'application/json; charset=utf-8')
-  response.setHeader('Cache-Control', 'no-store')
-  response.setHeader('Vercel-CDN-Cache-Control', 'no-store')
-  response.setHeader('X-Content-Type-Options', 'nosniff')
-  response.end(JSON.stringify(payload))
-}
-
 export function createDiscoveryProxy({
   env = runtimeEnv,
   fetcher = globalThis.fetch,
-  allowedOrigins = origins(env),
+  securityFetcher = globalThis.fetch,
+  allowedOrigins = gatewayOrigins(env),
   timeoutMs = 110000,
 } = {}) {
   return async function discoveryProxy(request, response) {
@@ -185,12 +154,7 @@ export function createDiscoveryProxy({
         response.setHeader('Allow', endpoint.method)
         throw new ProxyError(405, 'Method not allowed.')
       }
-      if (
-        request.headers['sec-fetch-site'] === 'cross-site' ||
-        (request.headers.origin && !allowedOrigins.includes(request.headers.origin))
-      ) {
-        throw new ProxyError(403, 'Request origin is not allowed.')
-      }
+      requireGatewayOrigin(request, allowedOrigins)
       const origin = apiOrigin(env.BADEM_API_ORIGIN)
       const secret = env.BADEM_SERVER_ADMIN_KEY
       if (!origin || typeof secret !== 'string' || !secret.trim() || /[\r\n]/.test(secret)) {
@@ -200,10 +164,16 @@ export function createDiscoveryProxy({
       timer = setTimeout(abort, timeoutMs)
       request.on?.('aborted', abort)
       response.on?.('close', abort)
+      const user = await authenticateBeta(request, { env, fetcher: securityFetcher, signal: controller.signal })
+      if (path.endsWith('/discover')) {
+        await reserveDiscovery(user, { env, fetcher: securityFetcher, signal: controller.signal })
+      }
+      controller.signal.throwIfAborted()
       const upstream = await fetcher(`${origin}/api/${path}`, {
         method: endpoint.method,
         headers: {
           'X-Admin-Key': secret,
+          'X-BADEM-User-Id': user.id,
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         ...(body !== undefined ? { body } : {}),
@@ -219,7 +189,7 @@ export function createDiscoveryProxy({
             : 'The BADEM service is temporarily unavailable.',
         )
       }
-      reply(response, upstream.status, await responseJson(upstream, secret))
+      reply(response, upstream.status, await responseJson(upstream, [secret, env.SUPABASE_SECRET_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter(Boolean)))
     } catch (error) {
       const status = controller.signal.aborted
         ? 504
@@ -231,7 +201,7 @@ export function createDiscoveryProxy({
         : error instanceof ProxyError
           ? error.message
           : 'The BADEM service is temporarily unavailable.'
-      reply(response, status, { detail: message })
+      reply(response, status, { detail: message }, error instanceof ProxyError ? error.code : undefined)
     } finally {
       controller.abort()
       clearTimeout(timer)

@@ -25,7 +25,8 @@ SCHEMA = (
         quantity INTEGER CHECK(quantity IS NULL OR quantity > 0),
         status TEXT NOT NULL CHECK(status IN
             ('DRAFT','SPECIFIED','DISCOVERY_READY','DISCOVERY_COMPLETE')),
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        owner_user_id TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS manufacturing_specifications (
         id TEXT PRIMARY KEY,
@@ -81,11 +82,15 @@ def initialize(db: Database) -> None:
     with db() as connection:
         for statement in SCHEMA:
             connection.execute(statement)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(manufacturing_requests)")}
+        if "owner_user_id" not in columns:
+            # Existing requests stay ownerless and private; never claim them on first access.
+            connection.execute("ALTER TABLE manufacturing_requests ADD COLUMN owner_user_id TEXT")
 
 
-def get_request(connection: sqlite3.Connection, request_id: str) -> dict | None:
+def get_request(connection: sqlite3.Connection, request_id: str, owner_user_id: str) -> dict | None:
     row = connection.execute(
-        "SELECT * FROM manufacturing_requests WHERE id=?", (request_id,),
+        "SELECT * FROM manufacturing_requests WHERE id=? AND owner_user_id=?", (request_id, owner_user_id),
     ).fetchone()
     return dict(row) if row is not None else None
 
@@ -93,8 +98,8 @@ def get_request(connection: sqlite3.Connection, request_id: str) -> dict | None:
 def insert_request(connection: sqlite3.Connection, request: dict) -> None:
     connection.execute(
         "INSERT INTO manufacturing_requests "
-        "(id,title,description,location_text,quantity,status,created_at) "
-        "VALUES(:id,:title,:description,:location_text,:quantity,:status,:created_at)", request,
+        "(id,title,description,location_text,quantity,status,created_at,owner_user_id) "
+        "VALUES(:id,:title,:description,:location_text,:quantity,:status,:created_at,:owner_user_id)", request,
     )
 
 
@@ -140,8 +145,11 @@ def get_candidates(connection: sqlite3.Connection, request_id: str) -> list[dict
     ).fetchall()]
 
 
-def get_candidate(connection: sqlite3.Connection, candidate_id: str) -> dict | None:
-    row = connection.execute(PROFILE_SELECT + "WHERE c.id=?", (candidate_id,)).fetchone()
+def get_candidate(connection: sqlite3.Connection, candidate_id: str, owner_user_id: str) -> dict | None:
+    row = connection.execute(
+        PROFILE_SELECT + "JOIN manufacturing_requests r ON r.id=c.discovered_for_request_id "
+        "WHERE c.id=? AND r.owner_user_id=?", (candidate_id, owner_user_id),
+    ).fetchone()
     return dict(row) if row is not None else None
 
 

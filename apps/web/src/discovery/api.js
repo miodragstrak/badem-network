@@ -1,14 +1,19 @@
+import { BETA_INVITE_MESSAGE, BETA_LIMIT_MESSAGE, BETA_SESSION_MESSAGE } from '../auth/messages.js'
+
 export class DiscoveryError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, code = '') {
     super(message)
     this.name = 'DiscoveryError'
     this.status = status
+    this.code = code
   }
 }
 
-function errorMessage(status, action) {
-  if (status === 401 || status === 403)
-    return 'Access to the BADEM API is not configured. Please contact the demo administrator.'
+function errorMessage(status, action, code) {
+  if (status === 401) return BETA_SESSION_MESSAGE
+  if (status === 403 && code === 'BETA_INVITE_REQUIRED') return BETA_INVITE_MESSAGE
+  if (status === 403) return 'Discovery is temporarily unavailable. Please try again later.'
+  if (status === 429 && code === 'DISCOVERY_LIMIT') return BETA_LIMIT_MESSAGE
   if (status === 422)
     return 'Some request values were not accepted. Review the fields and try again.'
   if (status === 404)
@@ -23,10 +28,10 @@ function errorMessage(status, action) {
   return 'The manufacturing request could not be saved. Your entries are preserved. Please try again.'
 }
 
-// Public builds use only the same-origin server proxy; local demos may use a key.
+// Identity tokens go only to the same-origin gateway, never directly to Render.
 export function createDiscoveryApi(config = {}) {
-  const { baseUrl, adminKey, production } = browserApiConfig(config)
-  const { fetcher = globalThis.fetch, timeoutMs = 120000 } = config
+  const baseUrl = '/badem-api'
+  const { fetcher = globalThis.fetch, timeoutMs = 120000, getAccessToken, onAccessError } = config
   async function request(path, { payload, signal, action } = {}) {
     const controller = new AbortController()
     const abort = () => controller.abort()
@@ -34,22 +39,35 @@ export function createDiscoveryApi(config = {}) {
     if (signal?.aborted) abort()
     signal?.addEventListener('abort', abort, { once: true })
     try {
+      controller.signal.throwIfAborted()
+      const token = await getAccessToken?.()
+      controller.signal.throwIfAborted()
+      if (typeof token !== 'string' || !token || /\s/.test(token)) {
+        throw new DiscoveryError(BETA_SESSION_MESSAGE, 401)
+      }
       const response = await fetcher(`${baseUrl.replace(/\/+$/, '')}${path}`, {
         method: payload !== undefined || action === 'discover' ? 'POST' : 'GET',
         headers: {
-          ...(!production && adminKey ? { 'X-Admin-Key': adminKey } : {}),
+          Authorization: `Bearer ${token}`,
           ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
         signal: controller.signal,
       })
       // Never render provider response bodies: they can contain internal details.
-      if (!response.ok)
-        throw new DiscoveryError(errorMessage(response.status, action), response.status)
+      if (!response.ok) {
+        const code = response.headers?.get('X-BADEM-Error')
+        throw new DiscoveryError(errorMessage(response.status, action, code), response.status, code)
+      }
       return await response.json()
     } catch (error) {
       if (signal?.aborted) throw error
-      if (error instanceof DiscoveryError) throw error
+      if (error instanceof DiscoveryError) {
+        if (error.status === 401 || (error.status === 403 && error.code === 'BETA_INVITE_REQUIRED')) {
+          onAccessError?.(error.status)
+        }
+        throw error
+      }
       throw new DiscoveryError(errorMessage(0, action))
     } finally {
       clearTimeout(timeout)
@@ -74,4 +92,3 @@ export function createDiscoveryApi(config = {}) {
       request(`/api/partner-candidates/${encodeURIComponent(id)}`, { signal, action: 'profile' }),
   }
 }
-import { browserApiConfig } from '../api-config.js'

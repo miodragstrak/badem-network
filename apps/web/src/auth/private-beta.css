@@ -1,0 +1,186 @@
+.beta-shell {
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--badem-ink);
+}
+.beta-topbar {
+  width: min(var(--badem-page-width), 100%);
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--badem-border);
+}
+.beta-topbar-actions,
+.discovery-topbar-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 12px;
+  max-width: 100%;
+}
+.beta-sign-in {
+  max-width: 620px;
+  margin: 56px auto 0;
+  padding-bottom: 32px;
+}
+.beta-eyebrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--badem-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+.beta-sign-in h1 {
+  font-size: 2.5rem;
+  line-height: 1.2;
+}
+.beta-lead {
+  font-size: 1.25rem;
+  line-height: 1.5;
+  margin: 20px 0 12px;
+}
+.beta-description {
+  max-width: 500px;
+  color: var(--badem-ink-soft);
+  font-size: 1rem;
+  line-height: 1.7;
+  margin: 0;
+}
+.beta-sign-in-actions {
+  display: grid;
+  gap: 14px;
+  max-width: 400px;
+  margin-top: 32px;
+}
+.beta-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 12px 16px;
+  border: 1px solid var(--badem-green);
+  border-radius: var(--badem-radius-button);
+  background: var(--badem-green);
+  color: var(--badem-on-dark);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.beta-button.secondary {
+  background: transparent;
+  color: var(--badem-green);
+}
+.beta-button:hover:not(:disabled) {
+  background: var(--badem-green-hover);
+  color: var(--badem-on-dark);
+}
+.beta-button:disabled,
+.beta-account button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.beta-notice {
+  margin: 20px 0 0;
+  color: var(--badem-ink-soft);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.beta-notice > svg {
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.beta-notice p {
+  margin: 0 0 14px;
+}
+.beta-sign-in form {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 20px;
+  border-top: 1px solid var(--badem-border);
+}
+.beta-sign-in label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.beta-sign-in input {
+  min-width: 0;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px;
+  border: 1px solid var(--badem-border-control);
+  border-radius: var(--badem-radius-control);
+  background: var(--badem-surface);
+  font: inherit;
+  color: inherit;
+}
+.beta-account {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  max-width: 100%;
+  color: var(--badem-ink-soft);
+  font-size: 0.8125rem;
+}
+.beta-account > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.beta-account > span > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.beta-account button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--badem-green);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.beta-account button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.beta-shell svg,
+.beta-account svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.beta-shell :focus-visible,
+.beta-account :focus-visible {
+  outline: 3px solid var(--badem-accent);
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  .beta-shell {
+    padding: 14px;
+  }
+  .beta-sign-in {
+    margin-top: 32px;
+  }
+  .beta-sign-in h1 {
+    font-size: 2rem;
+  }
+  .beta-topbar-actions,
+  .discovery-topbar-actions {
+    align-items: start;
+  }
+}

@@ -8,7 +8,8 @@ Proof-of-Production demo.
 - `/`: focused app home with Discovery and Proof entry cards and the compact
   DISCOVER -> QUALIFY -> PRODUCE -> PROVE product flow. Qualification is not
   implemented by this navigation milestone.
-- `/discovery`: existing production partner wizard and unchanged API flow.
+- `/discovery`: Private Beta sign-in, followed by the existing partner wizard
+  only after server-validated authentication and invited-email access.
 - `/proof`: existing public Proof demo, including `?mode=debug` and
   `?mode=fallback`. Old root demo URLs now display the app home; move demo
   query parameters to `/proof`.
@@ -16,10 +17,11 @@ Proof-of-Production demo.
 Navigation uses normal same-origin links; all three paths support direct
 refresh through the existing Vercel SPA fallback. Unknown app paths show the
 home's product links with an unavailable-page heading, not a Proof receipt.
-Server function routes and the discovery gateway allowlist are unchanged.
+The four-operation discovery allowlist is unchanged. A separate
+`GET /badem-api/auth/session` function checks access without touching FastAPI.
 The HTML metadata and favicon use BADEM; the favicon is an exact copy of the
-existing landing brand mark. No authentication, accounts, shortlist or
-qualification features are added.
+existing landing brand mark. Supabase Auth handles identity only; shortlist,
+qualification and manufacturing-database migration are not included.
 
 Run from `apps/web`:
 
@@ -49,25 +51,37 @@ Open `/discovery` for the buyer-facing, single-route wizard:
    `View partner profile` opens an accessible modal with inferred capabilities,
    public evidence, score breakdown and optional public listing enrichment.
 
-Trusted local development uses `VITE_BADEM_API_URL` (default `/badem-api`) and
-`VITE_BADEM_ADMIN_KEY` / `X-Admin-Key`. Vite's development proxy
-forwards `/badem-api` to the local API on port 8000. Production uses
-the same-origin discovery function described below and ignores direct
-API URL overrides and strips the local key. No localhost URL enters a build.
-For an isolated development API on a different port, set the server-only
-`BADEM_API_PROXY_TARGET` when starting Vite. It is not shipped to the browser
-and does not affect the production build or the default port-8000 proxy.
+See [Private Beta setup](../../docs/private-beta.md) before running Discovery.
+Google OAuth and existing-user email magic links return to `/discovery`.
+The browser sends a Supabase access token only to the same-origin gateway;
+every gateway request verifies the current identity with Supabase Auth and
+checks the server email allowlist. Only then can the gateway inject the private
+backend key and the verified user UUID in the server-only internal identity
+header. FastAPI stores request ownership in SQLite and checks it for every
+request/specification/discovery/candidate operation; cross-user and archived
+ownerless resources return 404. Neither header nor ownership may be chosen by
+the browser. The local Vite middleware uses the same protections, not a direct
+admin proxy. `BADEM_API_PROXY_TARGET` selects a loopback API (default port 8000);
+use disposable backend credentials and an isolated test Supabase project.
 
-`VITE_*` values must be browser-safe. The admin-key pattern is development-only.
-Public discovery uses the path-segment functions under `api/discovery/`, which
-inject `X-Admin-Key` from server-only `BADEM_SERVER_ADMIN_KEY` and target
-server-only `BADEM_API_ORIGIN`.
+Only the project URL and publishable/legacy anon key may use `VITE_SUPABASE_*`.
+The former `VITE_BADEM_ADMIN_KEY` is ignored even in development. The
+path-segment functions under `api/discovery/` inject `X-Admin-Key` from
+server-only `BADEM_SERVER_ADMIN_KEY` and target server-only `BADEM_API_ORIGIN`.
 Vercel rewrites preserve UUIDs in the destination path, not a `path` query string.
 The functions share one strict allowlisted handler; filesystem `id` parameters
 must match the path. Vite uses explicit `[id]` routes, not Next.js catch-all files.
 Automatic VITE exposure is disabled and all builds strip the local key, including
-development-mode builds. No accounts or backend-auth changes are introduced.
+development-mode builds. No backend authentication behavior is changed.
 Keep local environment files untracked and do not share real keys.
+
+Each invited Auth user can dispatch **three discoveries per UTC day**. Only
+`POST .../{id}/discover` reserves quota; creation, specification and profiles
+do not. A private Supabase table and service-only atomic SQL function persist
+the counter across Vercel instances/restarts. Attempts are reserved before
+backend dispatch, including mock discoveries, errors and timeouts; there are
+no ambiguous-failure refunds or automatic retries. Quota failure blocks dispatch.
+Sign-out does not reset usage. The manufacturing SQLite database stays on Render.
 
 Endpoints used:
 
@@ -91,8 +105,8 @@ source but does not resolve those deployment requirements.
 
 The existing `/proof` Proof-of-Production demo and its `?mode=debug` and
 `?mode=fallback` modes remain available. Public builds use the documented receipt
-without live proof requests; trusted local live reads remain available.
-Discovery ignores proof-demo fallback
+without live proof requests. Browser admin credentials are no longer supported,
+including the legacy local proof-admin configuration. Discovery ignores proof-demo fallback
 parameters and always requests the backend. No execution jobs, machine commands,
 wallets, Solana operations, outreach or payments are initiated by discovery.
 
@@ -106,7 +120,11 @@ npm run build
 
 Tests use Node's built-in runner, with injected fetch responses for API errors,
 ordering, empty results, cancellation and validation. Routing tests use the
-existing Vercel rewrite compiler. No new dependencies for this milestone.
+existing Vercel rewrite compiler. Supabase JS is the only new dependency.
+The SQL regression test starts an isolated Unix-socket-only PostgreSQL cluster,
+races 24 connections, checks restricted roles and restarts it. Install PostgreSQL
+17/18 binaries (or set `BADEM_TEST_POSTGRES_BIN`) and run as a non-root user;
+without them this one test is explicitly skipped, not replaced by a JS mock.
 
 ## Visual System
 
@@ -116,8 +134,9 @@ logo. The token audit and contrast decisions are in `docs/design-system.md`.
 The logo in `public/brand/` is an unchanged copy of the landing asset.
 
 Discovery and the profile modal use light surfaces. The proof receipt and active
-anchored state retain dark green technical emphasis. Layouts, wording, API
-configuration, fit results, debug/fallback modes and receipt values are unchanged.
+anchored state retain dark green technical emphasis. The existing wizard's
+manufacturing fields and fit results, plus Proof debug/fallback modes and receipt
+values, are preserved. Private Beta adds the sign-in surface and account indicator.
 
 Build from the full repository so `apps/shared/` is present. For a Vercel project
 rooted at `apps/web`, enable **Include source files outside of the Root Directory
@@ -131,7 +150,11 @@ the four discovery operations, then SPA paths. Jobs and proof/anchor routes are
 not proxied. Use Node 22.x and a 120s function budget with Fluid compute.
 `vite preview` is static, without a generic API proxy.
 
-Public discovery is intentionally unauthenticated. Origin checks are not a
-global anti-abuse quota: configure WAF/platform rate and storage controls before
-any public launch, plus Google spend controls before selecting Google discovery. Start with the existing
-mock provider and isolated preview data. No deployment is performed here.
+Discovery now requires server-validated, allowlisted Private Beta access and
+persistent quota. These are not substitutes for provider billing limits, WAF
+controls or privacy/retention review. Per-request ownership is enforced in the
+existing backend SQLite database, not Supabase. Configure Supabase
+Auth, apply the isolated quota SQL and set runtime secrets before deploying the
+web gate; follow the order in [Private Beta setup](../../docs/private-beta.md).
+Start with the mock provider and isolated preview data. No deployment is
+performed here.

@@ -51,8 +51,9 @@ python -m uvicorn backend.app:create_app --factory --host 0.0.0.0 --port "${PORT
 
 Ephemeral filesystems lose SQLite data on restart/deploy. The public web function
 injects admin auth server-side and proxies only discovery, not jobs, device
-ingestion or anchoring. Backend CORS, auth, scoring, proofs and Solana behavior
-are unchanged.
+ingestion or anchoring. Backend CORS, scoring, proofs and Solana behavior are
+unchanged; discovery alone additionally requires a trusted internal user identity
+and stored request ownership (Private Beta Step 2B).
 
 | Endpoint | Purpose | Authentication |
 | --- | --- | --- |
@@ -413,6 +414,28 @@ Discovery does not create execution jobs, contact machines, verify suppliers,
 perform cryptographic operations, scrape websites, or call Solana.
 The existing proof, event and anchor routes are unchanged. These new routes
 reuse the API's SQLite transaction helper and `X-Admin-Key` authentication.
+Private Beta Step 2B also requires exactly one server-only `X-BADEM-User-Id`
+header containing the authenticated Supabase user UUID. Admin authentication
+is checked before trusting that header; it does not replace the admin key.
+The Vercel gateway supplies it from freshly verified Auth identity, not from
+browser headers/body/query. Missing/malformed/duplicate identity returns 401;
+admin-only discovery requests are no longer supported.
+
+Creation stores `owner_user_id` in `manufacturing_requests`. Client create or
+specification payloads cannot set it. All request, specification and candidate
+operations require that owner; candidate profiles authorize through the parent
+request. Cross-user resources return the same 404 as missing resources. Ownership
+is checked before provider calls and again before persisting discovery results.
+The four-operation public gateway allowlist and Supabase daily quota are unchanged.
+
+Existing Render SQLite databases gain nullable `owner_user_id TEXT` on startup
+via a transactionally guarded `ALTER TABLE`, only when the column is missing.
+No rows or tables are rebuilt/deleted. Pre-auth records retain `NULL` ownership
+and are inaccessible to every beta user, including their specifications/candidates.
+There is no first-access claiming or automatic backfill. Proof/jobs/events/anchors
+and their auth remain unaffected. Take a consistent SQLite backup, deploy this
+backend before the matching gateway and reopen beta only after two-user checks;
+see [Private Beta setup](../../docs/private-beta.md) for the rollout and legacy policy.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -796,9 +819,9 @@ the curl examples below, then run:
 
 ```bash
 REQUEST_ID='<id of a request with a stored specification>'
-curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/discover"
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/candidates"
 ```
 
@@ -810,30 +833,35 @@ Google or RPC validation is performed by the test suite.
 ### Try Discovery With Curl
 
 Start the API using the existing Local Setup / Run FastAPI instructions above.
-No Google or Solana settings are needed. In a terminal with the same admin key:
+No Google or Solana settings are needed. Use a terminal with the same admin key.
+These are trusted-operator examples for disposable local data, not browser
+requests. Set `BADEM_TEST_USER_ID` to the intended Supabase user's UUID and keep
+the same identity for every request. Real app calls must go through the protected
+gateway, not choose this header.
 
 ```bash
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H 'Content-Type: application/json' \
+export BADEM_TEST_USER_ID='<Supabase user UUID for disposable local data>'
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" -H 'Content-Type: application/json' \
   -d '{"title":"Wooden logo pendant","description":"30 plywood pendants with an engraved logo","location_text":"Belgrade, Serbia","quantity":30}' \
   http://127.0.0.1:8000/api/manufacturing-requests
 
 REQUEST_ID='<id from the create response>'
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID"
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H 'Content-Type: application/json' \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" -H 'Content-Type: application/json' \
   -d '{"process":["laser_engraving"],"materials":["plywood"],"quantity":30,"dimensions_mm":{"width":80,"height":80,"thickness":3},"requirements":["engraved logo"],"location":{"city":"Belgrade","country":"RS"}}' \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/specification"
 
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/specification"
 
-curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -X POST -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/discover"
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/manufacturing-requests/$REQUEST_ID/candidates"
 
 CANDIDATE_ID='<candidate_id from discovery>'
-curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" \
+curl -sS -H "X-Admin-Key: $BADEM_ADMIN_KEY" -H "X-BADEM-User-Id: $BADEM_TEST_USER_ID" \
   "http://127.0.0.1:8000/api/partner-candidates/$CANDIDATE_ID"
 ```
 

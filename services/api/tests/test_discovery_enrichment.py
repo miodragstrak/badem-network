@@ -321,7 +321,7 @@ def test_service_enforces_hard_budget_even_if_provider_limit_is_modified(enriche
         GooglePlacesClient(transport=httpx.MockTransport(upstream)))
     provider.enrich_top_n = limit
     service = DiscoveryService(lambda: connection_factory(db_path), provider=provider)
-    assert service.discover(request_id)["status"] == "DISCOVERY_COMPLETE"
+    assert service.discover(request_id, owner_user_id=ADMIN["X-BADEM-User-Id"])["status"] == "DISCOVERY_COMPLETE"
     assert len(upstream.details) == expected_requests
 
 

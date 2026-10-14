@@ -14,7 +14,8 @@ from backend.discovery.schemas import ManufacturingSpecificationPayload
 from backend.discovery.service import DiscoveryService
 
 
-ADMIN = {"X-Admin-Key": "admin"}
+OWNER_USER_ID = "7d210ad9-3c1e-4b65-af95-a749924b39f0"
+ADMIN = {"X-Admin-Key": "admin", "X-BADEM-User-Id": OWNER_USER_ID}
 REQUEST = {"title": "Wooden logo pendant", "description": "30 wooden pendants with an engraved logo.",
            "location_text": "Belgrade, Serbia", "quantity": 30}
 SPECIFICATION = {"process": ["laser_engraving"], "materials": ["plywood"], "quantity": 30,
@@ -241,13 +242,13 @@ def test_refreshed_timestamp_changes_but_creation_and_ids_are_preserved(setup):
     request_id = create_request(client)
     specify(client, request_id)
     service = DiscoveryService(lambda: connection_factory(db_path), clock=lambda: 1000)
-    first = service.discover(request_id)
+    first = service.discover(request_id, owner_user_id=OWNER_USER_ID)
     candidate_id = first["candidates"][0]["candidate_id"]
-    first_detail = service.get_candidate(candidate_id)
+    first_detail = service.get_candidate(candidate_id, owner_user_id=OWNER_USER_ID)
     service.clock = lambda: 2000
-    second = service.discover(request_id)
+    second = service.discover(request_id, owner_user_id=OWNER_USER_ID)
     assert second == first
-    refreshed = service.get_candidate(candidate_id)
+    refreshed = service.get_candidate(candidate_id, owner_user_id=OWNER_USER_ID)
     assert refreshed["created_at"] == first_detail["created_at"] == 1000
     assert refreshed["last_refreshed_at"] == 2000
 
@@ -310,7 +311,7 @@ def test_provider_failure_rolls_back_status_and_retains_prior_results(setup):
     before = discover(client, request_id).json()
     service = DiscoveryService(lambda: connection_factory(db_path), provider=FailingProvider())
     with pytest.raises(RuntimeError, match="fixture failure"):
-        service.discover(request_id)
+        service.discover(request_id, owner_user_id=OWNER_USER_ID)
     assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == before
 
 
@@ -328,7 +329,7 @@ def test_storage_failure_rolls_back_deletes_and_status(setup, monkeypatch):
     monkeypatch.setattr(models, "replace_candidates", fail_after_replacement)
     service = DiscoveryService(lambda: connection_factory(db_path))
     with pytest.raises(RuntimeError, match="storage failure"):
-        service.discover(request_id)
+        service.discover(request_id, owner_user_id=OWNER_USER_ID)
     assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == before
 
 
@@ -342,7 +343,7 @@ def test_empty_provider_results_are_a_clear_completed_discovery(setup):
     specify(client, request_id)
     discover(client, request_id)
     service = DiscoveryService(lambda: connection_factory(db_path), provider=EmptyProvider())
-    assert service.discover(request_id) == {"request_id": request_id, "status": "DISCOVERY_COMPLETE",
+    assert service.discover(request_id, owner_user_id=OWNER_USER_ID) == {"request_id": request_id, "status": "DISCOVERY_COMPLETE",
                                            "provider": "MOCK_PUBLIC_DATA", "candidates": []}
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM public_capacity_profiles").fetchone() == (0,)

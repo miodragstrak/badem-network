@@ -19,7 +19,7 @@ from backend.discovery.providers import create_provider
 from backend.discovery.query_builder import build_queries
 from backend.discovery.scorer import score_profile
 from backend.discovery.service import DiscoveryService
-from test_discovery import ADMIN, SPECIFICATION, connection_factory, create_request, discover, specify
+from test_discovery import ADMIN, OWNER_USER_ID, SPECIFICATION, connection_factory, create_request, discover, specify
 
 
 def listing(place_id="test-place-1", name="Laser Engraving Wood Studio", city="Belgrade", country="RS"):
@@ -346,8 +346,8 @@ def test_persisted_google_results_are_not_relabelled_when_configuration_changes(
     specify(client, request_id)
     before = discover(client, request_id).json()
     service = DiscoveryService(lambda: connection_factory(db_path), provider=MockDiscoveryProvider())
-    assert service.get_candidates(request_id) == before
-    mock = service.discover(request_id)
+    assert service.get_candidates(request_id, owner_user_id=OWNER_USER_ID) == before
+    mock = service.discover(request_id, owner_user_id=OWNER_USER_ID)
     assert mock["provider"] == models.MOCK_SOURCE
     assert all(candidate["is_mock"] for candidate in mock["candidates"])
 
@@ -368,9 +368,9 @@ def test_provider_io_holds_no_database_lock_and_rejects_stale_specification(goog
     service = DiscoveryService(lambda: connection_factory(db_path), provider=GooglePlacesDiscoveryProvider(
         places_client(monkeypatch, change_spec_during_search)))
     with pytest.raises(HTTPException, match="specification changed") as error:
-        service.discover(request_id)
+        service.discover(request_id, owner_user_id=OWNER_USER_ID)
     assert error.value.status_code == 409
-    assert service.get_candidates(request_id) == before
+    assert service.get_candidates(request_id, owner_user_id=OWNER_USER_ID) == before
 
 
 def test_google_auth_and_missing_specification_do_not_call_upstream(google_setup):

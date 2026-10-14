@@ -3,8 +3,12 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": { "api/discovery/**/*.js": { "maxDuration": 120 } },
+  "functions": { "api/discovery/**/*.js": { "maxDuration": 120 }, "api/beta-session.js": { "maxDuration": 15 } },
   "rewrites": [
+    {
+      "source": "/badem-api/auth/session",
+      "destination": "/api/beta-session"
+    },
     {
       "source": "/badem-api/api/manufacturing-requests",
       "destination": "/api/discovery/manufacturing-requests"

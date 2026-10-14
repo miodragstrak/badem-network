@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
-import DiscoveryWizard from './discovery/DiscoveryWizard.jsx'
+import PrivateBeta from './auth/PrivateBeta.jsx'
 import AppHome from './AppHome.jsx'
 import { resolveAppRoute } from './routes.js'
 
@@ -14,7 +14,7 @@ createRoot(document.getElementById('root')).render(
       Skip to content
     </a>
     {route === 'discovery' ? (
-      <DiscoveryWizard />
+      <PrivateBeta />
     ) : route === 'proof' ? (
       <App />
     ) : (

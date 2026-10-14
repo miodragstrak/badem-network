@@ -1,8 +1,9 @@
 # Deployment Milestone 01
 
 This prepares deployment; it does not deploy. Discovery scoring/provider limits,
-device proof verification and Solana behavior are unchanged. No accounts or
-machine-control features are introduced.
+device proof verification and Solana behavior are unchanged. The later App UX
+Step 2 adds Private Beta identity and quota; see [Private Beta setup](private-beta.md).
+No manufacturing-database migration or machine control is introduced.
 
 ## Audit and Architecture
 
@@ -15,19 +16,24 @@ brand imports require access outside each app's Root Directory.
 ```text
 badem.network -> Vercel: apps/landing (static)
 app.badem.network -> Vercel: apps/web (static + discovery function)
-  browser -> /badem-api/api/... -> server function -> api.badem.network
+  browser -> /badem-api/auth/session -> server function -> Supabase Auth
+  browser -> /badem-api/api/... -> server function
+    -> Supabase Auth + invited email + atomic discovery quota -> api.badem.network
 api.badem.network -> persistent external host: services/api
 ```
 
-Only the function injects `X-Admin-Key`. Public builds ignore trusted-local API
+Only the function injects `X-Admin-Key` and the freshly verified Auth user's
+`X-BADEM-User-Id`. FastAPI validates admin authentication before trusting that
+internal identity; discovery requests and derived resources are owner-scoped in
+the existing SQLite database. Public builds ignore trusted-local API
 URL/key and live proof configuration. Both apps disable automatic `VITE_*`
 exposure and explicitly define approved public variables. Even a build with
 `--mode development` strips the local key and unknown VITE values.
 
-Public `/` is the app home and `/discovery` is the partner wizard. `/proof`,
+Public `/` is the app home; `/discovery` now requires invited Private Beta access. `/proof`,
 `/proof?mode=debug` and `/proof?mode=fallback` use the existing documented proof
 receipt. No live proof, health, jobs, device ingestion or anchor routes are
-publicly proxied. Trusted local live proof reads remain available. Receipt
+publicly proxied. Browser admin keys are ignored in all modes. Receipt
 values, transaction links and proof protocols are unchanged.
 
 ## Vercel Settings
@@ -48,7 +54,7 @@ is enabled. Keep `apps/shared/brand.css` in the checkout; the function also reus
 the landing public-HTTPS URL validator. No CSS duplication is needed. See the
 [Vercel monorepo FAQ](https://vercel.com/docs/monorepos/monorepo-faq).
 
-Committed `vercel.json` files specify build settings. Web rewrites place the four
+Committed `vercel.json` files specify build settings. Web rewrites place the access-check route and four
 API routes before SPA fallback, keep `/discovery` directly addressable, reject
 unknown `/badem-api` routes, and exclude `/api` from SPA fallback. The function's
 destination path is strictly allowlisted; it is never an arbitrary URL. UUIDs
@@ -69,6 +75,10 @@ Set secrets in platform environment settings, never Git or `VITE_*`.
 | Landing Vercel | `VITE_DEMO_URL` | `https://app.badem.network` once available; otherwise unset |
 | Web Vercel, server only | `BADEM_API_ORIGIN` | `https://api.badem.network`; public HTTPS origin, no path/query/credentials |
 | Web Vercel, server only | `BADEM_SERVER_ADMIN_KEY` | Same private value as backend `BADEM_ADMIN_KEY` |
+| Web Vercel, browser-safe build values | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | Canonical Supabase HTTPS project URL and publishable/legacy anon key |
+| Web Vercel, server only | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | Same Auth project as browser; used for fresh user verification |
+| Web Vercel, server only | `SUPABASE_SECRET_KEY` OR `SUPABASE_SERVICE_ROLE_KEY` | One privileged credential for service-only quota RPC; never `VITE_*` |
+| Web Vercel, server only | `BADEM_BETA_EMAIL_ALLOWLIST` | Comma-separated invited emails; empty denies all |
 | Backend host | `BADEM_ADMIN_KEY` | Generated private admin credential |
 | Backend host | `BADEM_DEVICE_ID` | Configured device identity |
 | Backend host | `BADEM_DEVICE_SECRET` | Private machine-event HMAC secret |
@@ -117,11 +127,17 @@ Errors are generic JSON, never raw backend/Google/stack bodies. Success preserve
 the backend payload, but credential echoes and Google-key-shaped strings fail
 closed. Responses use `no-store`; upstream headers and secrets are not emitted.
 
-**Public discovery is not authentication.** Origin/Fetch-Metadata checks reduce
-cross-site browser misuse, but non-browser callers can forge/omit those headers.
-Before any public launch, including mock mode, configure platform/WAF rate limits, spend
-alerts/quotas and storage/retention limits. In-memory per-function counters are
-not a global quota. Keep the existing mock provider until these controls are
+**Discovery is Private Beta.** Every discovery operation requires fresh Supabase
+Auth verification and server-side invited-email access. Only discover dispatches
+reserve the persistent, atomic three-per-user/UTC-day quota. Missing configuration
+or an unavailable quota service fails closed. See [Private Beta setup](private-beta.md)
+for SQL permissions, charged-attempt semantics and identity limitations.
+Step 2B rejects foreign and legacy-ownerless discovery resources with 404 before
+provider I/O. Browser headers/body/query cannot select an owner. The existing
+quota reservation precedes the backend call and is not refunded for these 404s.
+Origin/Fetch-Metadata checks still reduce cross-site browser misuse, but callers
+can forge/omit those headers. Configure platform/WAF limits, provider spend
+alerts and storage/retention controls too. Keep the mock provider until these are
 verified. Google attribution/licensing/privacy/retention requirements in the API
 documentation still need review before publishing Google-derived profiles.
 
@@ -157,7 +173,10 @@ Use a Python runtime compatible with pinned dependencies; local regression
 validation uses Python 3.14. Configure required backend variables above and
 health path `/health`. Health confirms startup, not disk durability, Google/RPC
 availability, finalized anchoring or physical production. Startup creates the
-tables; no separate migration is required. Discovery config is checked at startup
+tables. Step 2B also adds the nullable `owner_user_id` column transactionally on
+startup if missing; legacy discovery data remains ownerless and inaccessible.
+No destructive rebuild or automatic ownership assignment occurs. Take a
+consistent persistent-disk backup before upgrading. Discovery config is checked at startup
 and Solana config is needed only for existing operator-triggered anchoring.
 
 Only writes under the mounted disk survive. Persistent disks are single-instance
@@ -171,8 +190,11 @@ protect the optional payer key separately. Postgres migration is out of scope.
 Keep the backend on `127.0.0.1:8000` and the Vite development proxy. Use
 disposable local backend/device keys and `BADEM_DISCOVERY_PROVIDER=mock`, without
 production or Google credentials. Set the matching local key in ignored web
-`.env.local` as `VITE_BADEM_ADMIN_KEY`. `BADEM_API_PROXY_TARGET` can select another
-local port. Trusted-local live proof variables remain supported.
+`.env.local` as server-only `BADEM_SERVER_ADMIN_KEY`. Configure an isolated
+Supabase Auth project, quota SQL and allowlist using [Private Beta setup](private-beta.md).
+`BADEM_API_PROXY_TARGET` can select another loopback port. The local middleware
+enforces the same Auth/allowlist/quota checks as production. Invalid targets
+fail closed; browser admin credentials are not supported.
 
 `vite preview` is static and deliberately has no generic API proxy. Exercise the
 function with the offline tests or a local adapter and disposable server-only
@@ -184,7 +206,14 @@ Before launch:
 
 - Verify shared-source access, Node version, function budget and protected previews.
 - Configure DNS/TLS, platform-only keys, persistent storage and tested backups.
+- Configure Auth providers/redirects and invited emails, and apply quota SQL
+  before exposing the new web gateway. Test denied access and the fourth-discovery
+  limit in a protected preview; follow [Private Beta setup](private-beta.md).
 - Verify app -> function -> API wiring and denied job/anchor routes on the host.
+- For Step 2B, close beta access, back up SQLite, deploy the ownership-aware
+  backend before the matching gateway, then verify two users' cross-user 404s
+  and legacy-row denial before reopening. Do not roll back to admin-only
+  discovery authorization; see [Private Beta setup](private-beta.md).
 - Configure rate/spend/storage controls and Google-data compliance before Google mode.
 - Inspect fresh bundles and rotate any previously published credentials.
 

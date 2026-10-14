@@ -7,10 +7,12 @@ import { getTransformedRoutes } from '@vercel/routing-utils'
 import { createDiscoveryApi } from '../src/discovery/api.js'
 import { browserApiConfig } from '../src/api-config.js'
 import { createDiscoveryProxy } from '../server/discovery-proxy.js'
+import { betaEnvironment, betaToken, betaFetcher, betaUser } from './helpers/beta-fixtures.mjs'
 
 const id = 'b07127c3-7a8e-44da-b43f-a5fdd2b83d21'
 const serverKey = 'unit-test-server-key-not-a-real-credential'
 const environment = {
+  ...betaEnvironment,
   BADEM_API_ORIGIN: 'https://api.badem.network',
   BADEM_SERVER_ADMIN_KEY: serverKey,
 }
@@ -29,7 +31,7 @@ async function invoke({
   const request = Object.assign(new EventEmitter(), {
     method,
     body,
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${betaToken}`, ...headers },
     url: url || `/api/discovery/${path}`,
     query: query || {},
   })
@@ -46,6 +48,7 @@ async function invoke({
   const calls = []
   const proxy = createDiscoveryProxy({
     env,
+    securityFetcher: betaFetcher(),
     timeoutMs,
     fetcher: async (url, options) => {
       calls.push({ url, ...options })
@@ -58,19 +61,20 @@ async function invoke({
   return { response, calls }
 }
 
-test('public client ignores keys and cross-origin overrides; trusted local use remains available', async () => {
+test('client ignores admin keys and cross-origin overrides in every app mode', async () => {
   assert.deepEqual(
     browserApiConfig({ production: true, baseUrl: 'http://localhost:8000', adminKey: serverKey }),
     { production: true, baseUrl: '/badem-api', adminKey: '' },
   )
   assert.equal(
     browserApiConfig({ production: false, adminKey: 'local-only' }).adminKey,
-    'local-only',
+    '',
   )
   const calls = []
   const api = createDiscoveryApi({
     production: true,
     adminKey: serverKey,
+    getAccessToken: async () => betaToken,
     baseUrl: 'https://wrong.badem.network',
     fetcher: async (url, options) => {
       calls.push({ url, ...options })
@@ -83,6 +87,7 @@ test('public client ignores keys and cross-origin overrides; trusted local use r
   await api.getProfile(id)
   assert.ok(calls.every((call) => call.url.startsWith('/badem-api/api/')))
   assert.ok(calls.every((call) => !('X-Admin-Key' in call.headers)))
+  assert.ok(calls.every((call) => !Object.keys(call.headers).some((name) => name.toLowerCase() === 'x-badem-user-id')))
   assert.ok(calls.every((call) => !JSON.stringify(call).includes(serverKey)))
 })
 
@@ -103,7 +108,8 @@ test('proxy injects server auth only into the four allowed upstream operations',
       body,
       headers: {
         'x-admin-key': 'attacker-key',
-        authorization: 'never-forward',
+        'x-badem-user-id': '7069a579-01cf-4a10-a1c2-70e87652acfd',
+        authorization: `Bearer ${betaToken}`,
         cookie: 'never-forward',
       },
     })
@@ -111,6 +117,7 @@ test('proxy injects server auth only into the four allowed upstream operations',
     assert.equal(calls.length, 1)
     assert.equal(calls[0].url, `https://api.badem.network/api/${path}`)
     assert.equal(calls[0].headers['X-Admin-Key'], serverKey)
+    assert.equal(calls[0].headers['X-BADEM-User-Id'], betaUser.id)
     assert.equal(calls[0].headers.authorization, undefined)
     assert.equal(calls[0].headers.cookie, undefined)
     assert.equal(calls[0].redirect, 'error')
@@ -314,7 +321,7 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
     const request = Object.assign(Readable.from([Buffer.from(body)]), {
       method: 'POST',
       url: '/api/discovery/manufacturing-requests',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${betaToken}` },
       query: {},
     })
     const response = {
@@ -325,6 +332,7 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
     }
     const proxy = createDiscoveryProxy({
       env: environment,
+      securityFetcher: betaFetcher(),
       fetcher: async () => Response.json({ id }, { status: 201 }),
     })
     await proxy(request, response)
@@ -333,7 +341,7 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
   const request = {
     method: 'POST',
     url: '/api/discovery/manufacturing-requests',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${betaToken}` },
     query: {},
   }
   Object.defineProperty(request, 'body', {
@@ -349,6 +357,7 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
   }
   await createDiscoveryProxy({
     env: environment,
+    securityFetcher: betaFetcher(),
     fetcher: () => {
       throw new Error('Must not fetch')
     },

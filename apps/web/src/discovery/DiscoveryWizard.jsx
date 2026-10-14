@@ -391,8 +391,8 @@ function PartnerCard({ candidate, rank, onProfile }) {
   )
 }
 
-export default function DiscoveryWizard() {
-  const [api] = useState(() => createDiscoveryApi())
+export default function DiscoveryWizard({ getAccessToken, onAccessError, account }) {
+  const [api] = useState(() => createDiscoveryApi({ getAccessToken, onAccessError }))
   const [step, setStep] = useState(1)
   const [request, setRequest] = useState(INITIAL_REQUEST)
   const [requestId, setRequestId] = useState('')
@@ -511,7 +511,10 @@ export default function DiscoveryWizard() {
             <em>AI-Based DePIN Manufacturing</em>
           </span>
         </a>
-        <AppNavigation current="discovery" />
+        <div className="discovery-topbar-actions">
+          <AppNavigation current="discovery" />
+          {account}
+        </div>
       </header>
       <div className="discovery-container">
         <Progress step={step} />

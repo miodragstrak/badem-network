@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createDiscoveryApi, DiscoveryError } from '../src/discovery/api.js'
+import { betaToken } from './helpers/beta-fixtures.mjs'
 import {
   humanize,
   INITIAL_REQUEST,
@@ -93,11 +94,12 @@ test('all required process/material options are accepted', () => {
   assert.equal(humanize('PUBLIC_DATA_ONLY').toUpperCase(), 'PUBLIC DATA ONLY')
 })
 
-test('client uses the existing authentication and ordered discovery endpoints', async () => {
+test('client uses session identity and the same ordered discovery endpoints', async () => {
   const calls = []
   const api = createDiscoveryApi({
     baseUrl: '/test-api/',
     adminKey: 'test-only',
+    getAccessToken: async () => betaToken,
     fetcher: async (url, options) => {
       calls.push({ url, ...options })
       return { ok: true, json: async () => ({ id: 'request/1', candidates: [] }) }
@@ -113,13 +115,14 @@ test('client uses the existing authentication and ordered discovery endpoints', 
   assert.deepEqual(
     calls.map(({ url, method }) => [url, method]),
     [
-      ['/test-api/api/manufacturing-requests', 'POST'],
-      ['/test-api/api/manufacturing-requests/request%2F1/specification', 'POST'],
-      ['/test-api/api/manufacturing-requests/request%2F1/discover', 'POST'],
-      ['/test-api/api/partner-candidates/candidate%2F1', 'GET'],
+      ['/badem-api/api/manufacturing-requests', 'POST'],
+      ['/badem-api/api/manufacturing-requests/request%2F1/specification', 'POST'],
+      ['/badem-api/api/manufacturing-requests/request%2F1/discover', 'POST'],
+      ['/badem-api/api/partner-candidates/candidate%2F1', 'GET'],
     ],
   )
-  assert.ok(calls.every((call) => call.headers['X-Admin-Key'] === 'test-only'))
+  assert.ok(calls.every((call) => call.headers.Authorization === `Bearer ${betaToken}`))
+  assert.ok(calls.every((call) => !('X-Admin-Key' in call.headers)))
   assert.equal(calls[0].headers['Content-Type'], 'application/json')
   assert.equal(calls[2].body, undefined)
 })
@@ -134,6 +137,7 @@ test('API rankings and zero results are returned unchanged, without client fixtu
   ]) {
     const result = { provider: 'GOOGLE_PLACES', candidates }
     const api = createDiscoveryApi({
+      getAccessToken: async () => betaToken,
       fetcher: async () => ({ ok: true, json: async () => result }),
     })
     assert.equal(await api.discover('r'), result)
@@ -143,6 +147,7 @@ test('API rankings and zero results are returned unchanged, without client fixtu
 test('provider, authentication and save failures never expose response details or fake data', async () => {
   for (const status of [401, 403, 404, 409, 422, 500, 502, 504]) {
     const api = createDiscoveryApi({
+      getAccessToken: async () => betaToken,
       fetcher: async () => ({
         ok: false,
         status,
@@ -160,6 +165,7 @@ test('provider, authentication and save failures never expose response details o
     )
   }
   const api = createDiscoveryApi({
+    getAccessToken: async () => betaToken,
     fetcher: async () => {
       throw new Error('internal network information')
     },
@@ -181,7 +187,7 @@ test('cancellation propagates to fetch and a timeout becomes a retryable error',
         { once: true },
       )
     })
-  const api = createDiscoveryApi({ fetcher, timeoutMs: 10 })
+  const api = createDiscoveryApi({ fetcher, timeoutMs: 10, getAccessToken: async () => betaToken })
   await assert.rejects(api.discover('r'), /specification is preserved/)
   const controller = new AbortController()
   const pending = api.discover('r', controller.signal)

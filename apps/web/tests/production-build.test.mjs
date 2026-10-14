@@ -28,12 +28,28 @@ test(
       BADEM_SERVER_ADMIN_KEY: 'proxy-admin-build-canary-only',
       GOOGLE_PLACES_API_KEY: `AIza${'g'.repeat(35)}`,
       SOLANA_PAYER_PRIVATE_KEY: 'payer-build-canary-only',
+      SUPABASE_SECRET_KEY: 'sb_secret_server_build_canary_only',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role-build-canary-only',
+      VITE_SUPABASE_SECRET_KEY: 'sb_secret_vite_build_canary_only',
+      VITE_SUPABASE_SERVICE_ROLE_KEY: 'vite-service-role-build-canary-only',
+      BADEM_BETA_EMAIL_ALLOWLIST: 'allowlist-build-canary-only@example.org',
       VITE_UNRELATED_SECRET: 'unknown-vite-build-canary-only',
     }
     try {
-      for (const app of ['web', 'landing']) {
+      const publicKey = 'sb_publishable_browser_build_fixture_only'
+      const privilegedJwt = [
+        Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64url'),
+        Buffer.from(JSON.stringify({ role: 'service_role', marker: 'privileged-public-key-build-canary' })).toString('base64url'),
+        'fixture-signature-only',
+      ].join('.')
+      for (const [label, app, key] of [
+        ['web-invalid-public-key', 'web', 'sb_secret_wrongly_configured_public_key_canary'],
+        ['landing', 'landing', 'sb_secret_wrongly_configured_public_key_canary'],
+        ['web-valid-public-key', 'web', publicKey],
+        ['web-privileged-jwt', 'web', privilegedJwt],
+      ]) {
         const cwd = join(root, app)
-        const output = join(temp, app)
+        const output = join(temp, label)
         const result = spawnSync(
           process.execPath,
           [
@@ -55,11 +71,15 @@ test(
               NODE_ENV: 'development',
               VITE_BADEM_API_URL: 'http://localhost:8000',
               VITE_DEMO_URL: 'http://localhost:5173',
+              VITE_SUPABASE_URL: 'https://beta.badem.network',
+              VITE_SUPABASE_PUBLISHABLE_KEY: key,
             },
           },
         )
         assert.equal(result.status, 0, `${app}: security canary build failed`)
         const bundle = artifactText(output)
+        if (key === publicKey) assert.ok(bundle.includes(publicKey), 'Configured publishable key should reach the Auth client')
+        else assert.ok(!bundle.includes(key), `${label}: privileged value configured as public key must be stripped`)
         for (const value of Object.values(canaries))
           assert.ok(!bundle.includes(value), `${app}: credential canary found in artifact`)
         assert.ok(
@@ -71,6 +91,7 @@ test(
           `${app}: Google key-shaped string found in artifact`,
         )
         if (app === 'web') {
+          assert.ok(!bundle.toLowerCase().includes('x-badem-user-id'), 'Internal identity header must not enter browser code')
           assert.ok(
             !bundle.includes('BADEM_SERVER_ADMIN_KEY'),
             'Server code must not enter browser artifacts',

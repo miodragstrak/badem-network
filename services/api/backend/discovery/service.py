@@ -25,26 +25,27 @@ class DiscoveryService:
         self.clock = clock
 
     @staticmethod
-    def require_request(connection, request_id: str) -> dict:
-        request = models.get_request(connection, request_id)
+    def require_request(connection, request_id: str, owner_user_id: str) -> dict:
+        request = models.get_request(connection, request_id, owner_user_id)
         if request is None:
             raise HTTPException(404, "Manufacturing request not found")
         return request
 
-    def create_request(self, payload: NewManufacturingRequest) -> dict:
+    def create_request(self, payload: NewManufacturingRequest, *, owner_user_id: str) -> dict:
         request = {**payload.model_dump(), "id": str(uuid.uuid4()), "status": "DRAFT",
-                   "created_at": int(self.clock())}
+                   "created_at": int(self.clock()), "owner_user_id": owner_user_id}
         with self.db() as connection:
             models.insert_request(connection, request)
         return request
 
-    def get_request(self, request_id: str) -> dict:
+    def get_request(self, request_id: str, *, owner_user_id: str) -> dict:
         with self.db() as connection:
-            return self.require_request(connection, request_id)
+            return self.require_request(connection, request_id, owner_user_id)
 
-    def store_specification(self, request_id: str, payload: ManufacturingSpecificationPayload) -> tuple[dict, bool]:
+    def store_specification(self, request_id: str, payload: ManufacturingSpecificationPayload,
+                            *, owner_user_id: str) -> tuple[dict, bool]:
         with self.db() as connection:
-            self.require_request(connection, request_id)
+            self.require_request(connection, request_id, owner_user_id)
             previous = models.get_specification(connection, request_id)
             specification = {
                 "id": previous["id"] if previous else str(uuid.uuid4()), "request_id": request_id,
@@ -54,9 +55,9 @@ class DiscoveryService:
             models.save_specification(connection, specification)
         return specification, previous is None
 
-    def get_specification(self, request_id: str) -> dict:
+    def get_specification(self, request_id: str, *, owner_user_id: str) -> dict:
         with self.db() as connection:
-            self.require_request(connection, request_id)
+            self.require_request(connection, request_id, owner_user_id)
             specification = models.get_specification(connection, request_id)
             if specification is None:
                 raise HTTPException(404, "Manufacturing specification not found")
@@ -90,9 +91,9 @@ class DiscoveryService:
         return {"request_id": request["id"], "status": request["status"], "provider": source,
                 "candidates": [self.candidate_response(row) for row in rows]}
 
-    def discover(self, request_id: str) -> dict:
+    def discover(self, request_id: str, *, owner_user_id: str) -> dict:
         with self.db() as connection:
-            self.require_request(connection, request_id)
+            self.require_request(connection, request_id, owner_user_id)
             specification = models.get_specification(connection, request_id)
             if specification is None:
                 raise HTTPException(409, "Store a manufacturing specification before discovery")
@@ -131,7 +132,7 @@ class DiscoveryService:
                                 "fit_summary": f"{score.fit_label} based on public data",
                                 "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
         with self.db() as connection:
-            request = self.require_request(connection, request_id)
+            request = self.require_request(connection, request_id, owner_user_id)
             if models.get_specification(connection, request_id) != specification:
                 raise HTTPException(409, "Manufacturing specification changed during discovery; retry")
             models.set_status(connection, request_id, "DISCOVERY_READY")
@@ -140,13 +141,13 @@ class DiscoveryService:
             request["status"] = "DISCOVERY_COMPLETE"
             return self.results(connection, request)
 
-    def get_candidates(self, request_id: str) -> dict:
+    def get_candidates(self, request_id: str, *, owner_user_id: str) -> dict:
         with self.db() as connection:
-            return self.results(connection, self.require_request(connection, request_id))
+            return self.results(connection, self.require_request(connection, request_id, owner_user_id))
 
-    def get_candidate(self, candidate_id: str) -> dict:
+    def get_candidate(self, candidate_id: str, *, owner_user_id: str) -> dict:
         with self.db() as connection:
-            row = models.get_candidate(connection, candidate_id)
+            row = models.get_candidate(connection, candidate_id, owner_user_id)
             if row is None:
                 raise HTTPException(404, "Partner candidate not found")
             return self.candidate_response(row, detailed=True)

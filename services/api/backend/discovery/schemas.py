@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -27,6 +28,7 @@ class ManufacturingRequest(NewManufacturingRequest):
     id: str
     status: RequestStatus
     created_at: int
+    owner_user_id: UUID
 
 
 class SpecificationLocation(BaseModel):
@@ -50,6 +52,8 @@ class ManufacturingSpecificationPayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_json(self):
+        if "owner_user_id" in (self.model_extra or {}):
+            raise ValueError("Manufacturing ownership cannot be set by the client")
         try:
             encoded = json.dumps(self.model_dump(exclude_unset=True), allow_nan=False)
         except (TypeError, ValueError):
