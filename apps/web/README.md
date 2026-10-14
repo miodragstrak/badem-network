@@ -40,8 +40,12 @@ For an isolated development API on a different port, set the server-only
 and does not affect the production build or the default port-8000 proxy.
 
 `VITE_*` values must be browser-safe. The admin-key pattern is development-only.
-Public discovery uses `api/discovery.js`, which injects `X-Admin-Key` from
-server-only `BADEM_SERVER_ADMIN_KEY` and targets server-only `BADEM_API_ORIGIN`.
+Public discovery uses the path-segment functions under `api/discovery/`, which
+inject `X-Admin-Key` from server-only `BADEM_SERVER_ADMIN_KEY` and target
+server-only `BADEM_API_ORIGIN`.
+Vercel rewrites preserve UUIDs in the destination path, not a `path` query string.
+The functions share one strict allowlisted handler; filesystem `id` parameters
+must match the path. Vite uses explicit `[id]` routes, not Next.js catch-all files.
 Automatic VITE exposure is disabled and all builds strip the local key, including
 development-mode builds. No accounts or backend-auth changes are introduced.
 Keep local environment files untracked and do not share real keys.

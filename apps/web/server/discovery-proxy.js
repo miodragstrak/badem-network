@@ -39,6 +39,45 @@ function origins(env) {
   return allowed
 }
 
+function discoveryPath(request) {
+  const rawUrl = request.url
+  if (
+    typeof rawUrl !== 'string' ||
+    !rawUrl.startsWith('/') ||
+    rawUrl.startsWith('//') ||
+    /[\s\\%#]/.test(rawUrl) ||
+    [...rawUrl].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
+    /\/(?:\.|\.\.)(?:\/|\?|$)/.test(rawUrl)
+  )
+    throw new ProxyError(404, 'Endpoint unavailable.')
+  const url = new URL(rawUrl, 'https://proxy.invalid')
+  const route = /^\/(badem-api\/api|api\/discovery)\/(.+)$/.exec(url.pathname)
+  let path = route?.[2]
+  // Legacy Vercel function targets include .js; public API paths do not.
+  if (route?.[1] === 'api/discovery') path = path.replace(/\.js$/, '')
+  const query = request.query || Object.fromEntries(url.searchParams)
+  if (
+    !path ||
+    Object.keys(query).some((key) => key !== 'id') ||
+    [...url.searchParams.keys()].some((key) => key !== 'id') ||
+    url.searchParams.getAll('id').length > 1
+  )
+    throw new ProxyError(404, 'Endpoint unavailable.')
+  // Vercel adds the filesystem [id] parameter. It must agree with the URL, never override it.
+  const id = query.id === undefined ? url.searchParams.get('id') ?? undefined : query.id
+  if (id !== undefined) {
+    if (
+      typeof id !== 'string' ||
+      new RegExp(`^${UUID}$`).exec(id)?.[0] !== id ||
+      (url.searchParams.has('id') && url.searchParams.get('id') !== id)
+    )
+      throw new ProxyError(404, 'Endpoint unavailable.')
+    path = path.replace('[id]', id)
+    if (path.split('/')[1] !== id) throw new ProxyError(404, 'Endpoint unavailable.')
+  }
+  return path
+}
+
 async function requestBody(request, needsBody) {
   const length = Number(request.headers['content-length'] || 0)
   if (!Number.isFinite(length) || length < 0) throw new ProxyError(400, 'Invalid request.')
@@ -139,19 +178,9 @@ export function createDiscoveryProxy({
     const controller = new AbortController()
     const abort = () => controller.abort()
     try {
-      const params = new URL(request.url, 'https://proxy.invalid').searchParams
-      const query = request.query || Object.fromEntries(params)
-      const path = query.path
-      const endpoint =
-        typeof path === 'string' && ENDPOINTS.find((item) => item.path.exec(path)?.[0] === path)
-      if (
-        !endpoint ||
-        Object.keys(query).some((key) => key !== 'path') ||
-        [...params.keys()].some((key) => key !== 'path')
-      )
-        throw new ProxyError(404, 'Endpoint unavailable.')
-      // Duplicate routing parameters are rejected rather than choosing one of them.
-      if (params.getAll('path').length > 1) throw new ProxyError(404, 'Endpoint unavailable.')
+      const path = discoveryPath(request)
+      const endpoint = ENDPOINTS.find((item) => item.path.exec(path)?.[0] === path)
+      if (!endpoint) throw new ProxyError(404, 'Endpoint unavailable.')
       if (request.method !== endpoint.method) {
         response.setHeader('Allow', endpoint.method)
         throw new ProxyError(405, 'Method not allowed.')

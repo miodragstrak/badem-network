@@ -3,27 +3,27 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": { "api/discovery.js": { "maxDuration": 120 } },
+  "functions": { "api/discovery/**/*.js": { "maxDuration": 120 } },
   "rewrites": [
     {
       "source": "/badem-api/api/manufacturing-requests",
-      "destination": "/api/discovery?path=manufacturing-requests"
+      "destination": "/api/discovery/manufacturing-requests"
     },
     {
       "source": "/badem-api/api/manufacturing-requests/:id/specification",
-      "destination": "/api/discovery?path=manufacturing-requests/:id/specification"
+      "destination": "/api/discovery/manufacturing-requests/:id/specification"
     },
     {
       "source": "/badem-api/api/manufacturing-requests/:id/discover",
-      "destination": "/api/discovery?path=manufacturing-requests/:id/discover"
+      "destination": "/api/discovery/manufacturing-requests/:id/discover"
     },
     {
       "source": "/badem-api/api/partner-candidates/:id",
-      "destination": "/api/discovery?path=partner-candidates/:id"
+      "destination": "/api/discovery/partner-candidates/:id"
     },
     {
-      "source": "/badem-api/:path*",
-      "destination": "/api/discovery?path=blocked"
+      "source": "/badem-api/(.*)?",
+      "destination": "/api/discovery/blocked"
     },
     {
       "source": "/((?!api(?:/|$)).*)",

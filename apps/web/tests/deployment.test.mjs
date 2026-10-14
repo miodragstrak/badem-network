@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { readFileSync } from 'node:fs'
+import { getTransformedRoutes } from '@vercel/routing-utils'
 import { createDiscoveryApi } from '../src/discovery/api.js'
 import { browserApiConfig } from '../src/api-config.js'
 import { createDiscoveryProxy } from '../server/discovery-proxy.js'
@@ -29,8 +30,8 @@ async function invoke({
     method,
     body,
     headers: { 'content-type': 'application/json', ...headers },
-    url: url || `/api/discovery?path=${encodeURIComponent(path)}`,
-    query: query || { path },
+    url: url || `/api/discovery/${path}`,
+    query: query || {},
   })
   const response = Object.assign(new EventEmitter(), {
     headers: {},
@@ -135,7 +136,6 @@ test('proxy rejects all non-discovery paths and path/URL manipulation without up
     `manufacturing-requests/${id}/../discover`,
     'manufacturing-requests%2F..%2Fjobs',
     'manufacturing-requests\n',
-    ['manufacturing-requests'],
     '',
   ]) {
     const { response, calls } = await invoke({ path })
@@ -150,6 +150,77 @@ test('proxy rejects all non-discovery paths and path/URL manipulation without up
   assert.equal(duplicate.response.statusCode, 404)
   assert.equal(duplicate.calls.length, 0)
 })
+
+test('path routing cannot be overridden by client queries or conflicting filesystem metadata', async () => {
+  const path = `manufacturing-requests/${id}/specification`
+  const otherId = '7069a579-01cf-4a10-a1c2-70e87652acfd'
+  for (const options of [
+    { url: `/api/discovery/${path}?path=jobs` },
+    { url: `/api/discovery/${path}?url=https://evil.example` },
+    { url: `/api/discovery/${path}?id=${id}&id=${id}` },
+    { url: `/api/discovery/${path}?id=${otherId}` },
+    { query: { id: otherId } },
+    { query: { id: [id, id] } },
+    { query: { id: ':id' } },
+    { query: { id: `${id}\n` } },
+    { query: { id, path: 'jobs' } },
+    { url: `/api/discovery/${path}?id=${otherId}`, query: { id } },
+    { url: '/api/discovery/manufacturing-requests', query: { id } },
+    { url: '/api/discovery/manufacturing-requests/[id]/specification' },
+    { url: `/api/discovery/manufacturing-requests/:id/specification`, query: { id } },
+    { url: `/api/discovery/manufacturing-requests/${id}%2Fspecification`, query: { id } },
+    { url: `https://evil.example/api/discovery/${path}`, query: { id } },
+    { url: `//evil.example/api/discovery/${path}`, query: { id } },
+    { url: `/badem-api/api/${path}.js`, query: { id } },
+  ]) {
+    const { response, calls } = await invoke({ path, ...options })
+    assert.equal(response.statusCode, 404, JSON.stringify(options))
+    assert.equal(calls.length, 0)
+    assert.equal(response.headers['Cache-Control'], 'no-store')
+  }
+})
+
+for (const [suffix, method, body, file] of [
+  [
+    `manufacturing-requests/${id}/specification`,
+    'POST',
+    { process: ['laser_engraving'], materials: ['wood'] },
+    'manufacturing-requests/[id]/specification.js',
+  ],
+  [`manufacturing-requests/${id}/discover`, 'POST', '', 'manufacturing-requests/[id]/discover.js'],
+  [`partner-candidates/${id}`, 'GET', '', 'partner-candidates/[id].js'],
+]) {
+  test(`Vercel rewrite interpolates the real UUID for ${file}`, async () => {
+    const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url)))
+    const { routes, error } = getTransformedRoutes(config)
+    assert.equal(error, null)
+    const browserPath = `/badem-api/api/${suffix}`
+    const route = routes.find((item) => item.src && new RegExp(item.src).test(browserPath))
+    const destination = browserPath.replace(new RegExp(route.src), route.dest)
+    assert.equal(destination, `/api/discovery/${suffix}`)
+    assert.ok(!destination.includes('?'))
+    assert.ok(!destination.includes(':id'))
+    const entry = await import(new URL(`../api/discovery/${file}`, import.meta.url))
+    assert.equal(typeof entry.default, 'function')
+    for (const url of [
+      browserPath,
+      destination,
+      `${destination}?id=${id}`,
+      `/api/discovery/${file.slice(0, -3)}?id=${id}`,
+      `/api/discovery/${file}?id=${id}`,
+    ]) {
+      const { response, calls } = await invoke({ url, query: { id }, method, body })
+      assert.equal(response.statusCode, 201, url)
+      assert.equal(calls.length, 1)
+      assert.equal(calls[0].url, `https://api.badem.network/api/${suffix}`)
+      assert.equal(calls[0].headers['X-Admin-Key'], serverKey)
+      assert.equal(response.headers['Cache-Control'], 'no-store')
+    }
+    const withoutMetadata = await invoke({ url: destination, method, body })
+    assert.equal(withoutMetadata.response.statusCode, 201)
+    assert.equal(withoutMetadata.calls[0].url, `https://api.badem.network/api/${suffix}`)
+  })
+}
 
 test('proxy rejects unsupported methods, cross-site origins and invalid server configuration', async () => {
   for (const method of ['GET', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']) {
@@ -242,9 +313,9 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
   ]) {
     const request = Object.assign(Readable.from([Buffer.from(body)]), {
       method: 'POST',
-      url: '/api/discovery?path=manufacturing-requests',
+      url: '/api/discovery/manufacturing-requests',
       headers: { 'content-type': 'application/json' },
-      query: { path: 'manufacturing-requests' },
+      query: {},
     })
     const response = {
       setHeader() {},
@@ -261,9 +332,9 @@ test('proxy handles raw Node request streams and malformed Vercel body getters s
   }
   const request = {
     method: 'POST',
-    url: '/api/discovery?path=manufacturing-requests',
+    url: '/api/discovery/manufacturing-requests',
     headers: { 'content-type': 'application/json' },
-    query: { path: 'manufacturing-requests' },
+    query: {},
   }
   Object.defineProperty(request, 'body', {
     get() {
@@ -361,11 +432,11 @@ test('proxy timeout is sanitized and its timers/listeners are released', async (
 test('Vercel routes expose the four discovery operations before SPA fallback', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url)))
   assert.equal(config.framework, 'vite')
-  assert.equal(config.functions['api/discovery.js'].maxDuration, 120)
+  assert.equal(config.functions['api/discovery/**/*.js'].maxDuration, 120)
   assert.equal(
     config.rewrites.filter(
       (rewrite) =>
-        rewrite.destination.startsWith('/api/discovery?path=') &&
+        rewrite.destination.startsWith('/api/discovery/') &&
         !rewrite.destination.endsWith('blocked'),
     ).length,
     4,
@@ -376,4 +447,16 @@ test('Vercel routes expose the four discovery operations before SPA fallback', (
   assert.ok(spa.test('/'))
   assert.ok(!spa.test('/api/proofs'))
   assert.ok(config.rewrites.every((rewrite) => !rewrite.destination.startsWith('http')))
+  assert.ok(config.rewrites.every((rewrite) => !rewrite.destination.includes('?')))
+  const { routes, error } = getTransformedRoutes(config)
+  assert.equal(error, null)
+  for (const path of [
+    '/badem-api',
+    '/badem-api/',
+    '/badem-api/api/jobs',
+    '/badem-api/api/proofs/anchor',
+  ]) {
+    const route = routes.find((item) => item.src && new RegExp(item.src).test(path))
+    assert.equal(path.replace(new RegExp(route.src), route.dest), '/api/discovery/blocked')
+  }
 })
