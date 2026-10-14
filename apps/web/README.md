@@ -30,20 +30,21 @@ Open `/discovery` for the buyer-facing, single-route wizard:
    `View partner profile` opens an accessible modal with inferred capabilities,
    public evidence, score breakdown and optional public listing enrichment.
 
-The wizard uses the existing `VITE_BADEM_API_URL` (default `/badem-api`) and
-`VITE_BADEM_ADMIN_KEY` / `X-Admin-Key` integration. Vite's development proxy
-forwards `/badem-api` to the local API on port 8000. In production configure a
-same-origin API proxy or a deployment-specific API base URL with appropriate
-cross-origin support. No localhost URL is added to frontend source.
+Trusted local development uses `VITE_BADEM_API_URL` (default `/badem-api`) and
+`VITE_BADEM_ADMIN_KEY` / `X-Admin-Key`. Vite's development proxy
+forwards `/badem-api` to the local API on port 8000. Production uses
+the same-origin discovery function described below and ignores direct
+API URL overrides and strips the local key. No localhost URL enters a build.
 For an isolated development API on a different port, set the server-only
 `BADEM_API_PROXY_TARGET` when starting Vite. It is not shipped to the browser
 and does not affect the production build or the default port-8000 proxy.
 
-`VITE_*` values are shipped to the browser. The existing admin-key pattern is
-for trusted local/demo use only: do not put a production admin secret in a public
-bundle. A public deployment needs server-side authentication/proxy handling;
-this milestone does not add accounts or change backend authentication. Keep
-local environment files untracked and do not share real keys.
+`VITE_*` values must be browser-safe. The admin-key pattern is development-only.
+Public discovery uses `api/discovery.js`, which injects `X-Admin-Key` from
+server-only `BADEM_SERVER_ADMIN_KEY` and targets server-only `BADEM_API_ORIGIN`.
+Automatic VITE exposure is disabled and all builds strip the local key, including
+development-mode builds. No accounts or backend-auth changes are introduced.
+Keep local environment files untracked and do not share real keys.
 
 Endpoints used:
 
@@ -66,7 +67,9 @@ Google attribution, retention and privacy limitations; this UI identifies the
 source but does not resolve those deployment requirements.
 
 The existing `/` Proof-of-Production demo and its `?mode=debug` and
-`?mode=fallback` modes are unchanged. Discovery ignores proof-demo fallback
+`?mode=fallback` modes remain available. Public builds use the documented receipt
+without live proof requests; trusted local live reads remain available.
+Discovery ignores proof-demo fallback
 parameters and always requests the backend. No execution jobs, machine commands,
 wallets, Solana operations, outreach or payments are initiated by discovery.
 
@@ -95,3 +98,16 @@ configuration, fit results, debug/fallback modes and receipt values are unchange
 Build from the full repository so `apps/shared/` is present. For a Vercel project
 rooted at `apps/web`, enable **Include source files outside of the Root Directory
 in the Build Step**. No hosting settings are changed here.
+
+## Public Deployment
+
+See `docs/deployment.md` for the audited architecture, exact project/backend
+settings, environment ownership and launch checklist. `vercel.json` routes only
+the four discovery operations, then SPA paths. Jobs and proof/anchor routes are
+not proxied. Use Node 22.x and a 120s function budget with Fluid compute.
+`vite preview` is static, without a generic API proxy.
+
+Public discovery is intentionally unauthenticated. Origin checks are not a
+global anti-abuse quota: configure WAF/platform rate and storage controls before
+any public launch, plus Google spend controls before selecting Google discovery. Start with the existing
+mock provider and isolated preview data. No deployment is performed here.

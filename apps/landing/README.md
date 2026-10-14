@@ -43,7 +43,7 @@ In Project Settings -> Environment Variables, configure `VITE_DEMO_URL`:
 
 | Environment | Value |
 | --- | --- |
-| Production | Leave unset/empty until the public demo is available; then use `https://demo.badem.network`. |
+| Production | Leave unset/empty until the public app is available; then use `https://app.badem.network`. |
 | Preview | Leave unset/empty, or use the same publicly available HTTPS demo. Never use localhost. |
 | Development | `http://localhost:5173` |
 
@@ -144,3 +144,13 @@ Build from the full repository so `apps/shared/` is available. For the Vercel
 project rooted at `apps/landing`, enable **Include source files outside of the
 Root Directory in the Build Step**. This source-sharing requirement does not
 change the demo URL policy. No hosting settings or deployment are changed here.
+
+## Deployment Readiness
+
+The target demo URL is now `https://app.badem.network`, not the earlier proposed
+`demo.badem.network`; leave `VITE_DEMO_URL` unset until it is available.
+`vercel.json` specifies Vite install/build/output settings and `package.json`
+declares Node 22.x. Automatic VITE exposure is disabled; only the sanitized demo
+URL is defined. Never configure backend/admin/Google/Solana keys in this project.
+See `docs/deployment.md` for both projects, the function boundary and persistent
+FastAPI host setup. No deployment is performed here.

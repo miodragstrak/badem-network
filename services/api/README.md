@@ -41,6 +41,19 @@ The API runs at `http://127.0.0.1:8000`; interactive API documentation is at
 `chain: not_connected`.
 The health endpoint does not probe RPC or claim any proof is on-chain.
 
+For public-host readiness, see `docs/deployment.md` at the repository root.
+Use one persistent instance with `BADEM_DB_PATH=/var/data/badem.db` on a mounted
+disk and no reload in production:
+
+```bash
+python -m uvicorn backend.app:create_app --factory --host 0.0.0.0 --port "${PORT:-8000}" --workers 1 --no-proxy-headers
+```
+
+Ephemeral filesystems lose SQLite data on restart/deploy. The public web function
+injects admin auth server-side and proxies only discovery, not jobs, device
+ingestion or anchoring. Backend CORS, auth, scoring, proofs and Solana behavior
+are unchanged.
+
 | Endpoint | Purpose | Authentication |
 | --- | --- | --- |
 | `GET /health` | Service health | None |

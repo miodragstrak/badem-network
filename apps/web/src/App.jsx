@@ -17,8 +17,7 @@ import {
   WifiOff,
 } from 'lucide-react'
 import './App.css'
-
-const LIVE_API_BASE_URL = import.meta.env.VITE_BADEM_API_URL || '/badem-api'
+import { browserApiConfig } from './api-config.js'
 
 const DEMO_JOB = {
   id: 'BADEM-JOB-0042',
@@ -76,16 +75,18 @@ const API_STATUS_TO_STAGE = {
 
 function buildRuntimeConfig() {
   const params = new URLSearchParams(window.location.search)
+  const api = browserApiConfig()
 
   return {
-    apiBaseUrl: (LIVE_API_BASE_URL || '').replace(/\/$/, ''),
-    adminKey: import.meta.env.VITE_BADEM_ADMIN_KEY || '',
+    apiBaseUrl: api.baseUrl.replace(/\/$/, ''),
+    adminKey: api.adminKey,
     jobId: params.get('job_id') || import.meta.env.VITE_BADEM_JOB_ID || '',
     proofId: params.get('proof_id') || import.meta.env.VITE_BADEM_PROOF_ID || '',
     nodeId: import.meta.env.VITE_BADEM_NODE_ID || '',
     proofHash: import.meta.env.VITE_BADEM_PROOF_HASH || '',
     debugMode: params.get('mode') === 'debug',
-    forceFallback: params.get('mode') === 'fallback' || params.get('demo') === 'fallback',
+    publicDemo: api.production,
+    forceFallback: api.production || params.get('mode') === 'fallback' || params.get('demo') === 'fallback',
   }
 }
 
@@ -218,7 +219,7 @@ function normalizeApiState(payload, config, health) {
 
 async function loadLiveState(config) {
   if (config.forceFallback) {
-    throw new Error('Fallback mode forced by URL')
+    throw new Error(config.publicDemo ? 'Public deployment uses the documented fallback receipt' : 'Fallback mode forced by URL')
   }
 
   if (!config.apiBaseUrl) {

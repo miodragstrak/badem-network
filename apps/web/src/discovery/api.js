@@ -23,13 +23,10 @@ function errorMessage(status, action) {
   return 'The manufacturing request could not be saved. Your entries are preserved. Please try again.'
 }
 
-// Uses the same configuration and authentication as the existing proof demo.
-export function createDiscoveryApi({
-  baseUrl = import.meta.env?.VITE_BADEM_API_URL || '/badem-api',
-  adminKey = import.meta.env?.VITE_BADEM_ADMIN_KEY || '',
-  fetcher = globalThis.fetch,
-  timeoutMs = 120000,
-} = {}) {
+// Public builds use only the same-origin server proxy; local demos may use a key.
+export function createDiscoveryApi(config = {}) {
+  const { baseUrl, adminKey, production } = browserApiConfig(config)
+  const { fetcher = globalThis.fetch, timeoutMs = 120000 } = config
   async function request(path, { payload, signal, action } = {}) {
     const controller = new AbortController()
     const abort = () => controller.abort()
@@ -40,7 +37,7 @@ export function createDiscoveryApi({
       const response = await fetcher(`${baseUrl.replace(/\/+$/, '')}${path}`, {
         method: payload !== undefined || action === 'discover' ? 'POST' : 'GET',
         headers: {
-          ...(adminKey ? { 'X-Admin-Key': adminKey } : {}),
+          ...(!production && adminKey ? { 'X-Admin-Key': adminKey } : {}),
           ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
@@ -77,3 +74,4 @@ export function createDiscoveryApi({
       request(`/api/partner-candidates/${encodeURIComponent(id)}`, { signal, action: 'profile' }),
   }
 }
+import { browserApiConfig } from '../api-config.js'

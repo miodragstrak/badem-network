@@ -8,6 +8,7 @@ export default defineConfig(({ command, mode, isPreview }) => {
 
   return {
     plugins: [react()],
+    envPrefix: [],
     // Sanitize before replacement so rejected URLs never enter the production bundle.
     define: { 'import.meta.env.VITE_DEMO_URL': JSON.stringify(resolveDemoUrl(env.VITE_DEMO_URL, production)) },
   }

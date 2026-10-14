@@ -1,0 +1,8 @@
+**/.env*
+**/.venv/**
+**/*.db
+**/*.db-*
+**/*keypair*.json
+**/wallet*.json
+**/*.pem
+**/*.key
