@@ -2,10 +2,13 @@
 
 import re
 
+from backend.discovery.countries import region_code
 from backend.discovery.enrichment import configured_enrichment_limit, derive_public_evidence
 from backend.discovery.models import GOOGLE_SOURCE, PublicPartnerData
 from backend.discovery.places_client import GooglePlacesClient
+from backend.discovery.profile_builder import normalize_term
 from backend.discovery.query_builder import MAX_QUERIES, build_queries
+from backend.discovery.signals import normalize_text
 
 
 MAX_CANDIDATES = 10
@@ -46,6 +49,30 @@ def normalize_place(place: dict) -> PublicPartnerData | None:
     )
 
 
+def matches_country(place: dict, requested_country: str) -> bool:
+    requested = normalize_term(normalize_text(requested_country))
+    if not requested_country.strip():
+        return True
+    if not requested:
+        return False
+    components = place.get("addressComponents")
+    if not isinstance(components, list):
+        return False
+    countries = [component for component in components if isinstance(component, dict)
+                 and isinstance(component.get("types"), list) and "country" in component["types"]]
+    if not countries:
+        return False
+    for component in countries:
+        short = text(component.get("shortText"))
+        long = text(component.get("longText"))
+        actual = normalize_term(normalize_text(short or long))
+        if requested != actual:
+            # Codes (including the existing Serbia -> RS alias) trust the returned short code.
+            if len(requested) == 2 or requested != normalize_term(normalize_text(long)):
+                return False
+    return True
+
+
 class GooglePlacesDiscoveryProvider:
     source = GOOGLE_SOURCE
 
@@ -58,10 +85,11 @@ class GooglePlacesDiscoveryProvider:
 
     def discover(self, specification: dict) -> list[PublicPartnerData]:
         partners = {}
+        country = (specification.get("location") or {}).get("country") or ""
         for query in build_queries(specification)[:MAX_QUERIES]:
-            for place in self.client.text_search(query):
+            for place in self.client.text_search(query, region_code=region_code(country)):
                 partner = normalize_place(place)
-                if partner is not None:
+                if partner is not None and matches_country(place, country):
                     partners.setdefault(partner.source_place_id, partner)
                     if len(partners) == MAX_CANDIDATES:
                         return list(partners.values())

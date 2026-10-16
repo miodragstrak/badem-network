@@ -23,11 +23,12 @@ from test_discovery import ADMIN, OWNER_USER_ID, SPECIFICATION, connection_facto
 
 
 def listing(place_id="test-place-1", name="Laser Engraving Wood Studio", city="Belgrade", country="RS"):
+    country_name = {"RS": "Serbia", "US": "United States", "DE": "Germany"}.get(country.upper(), country)
     return {"id": place_id, "displayName": {"text": name},
             "primaryType": "manufacturer", "types": ["manufacturer", "establishment"],
             "addressComponents": [
                 {"longText": city, "types": ["locality", "political"]},
-                {"longText": "Serbia", "shortText": country, "types": ["country", "political"]},
+                {"longText": country_name, "shortText": country, "types": ["country", "political"]},
             ]}
 
 
@@ -79,7 +80,7 @@ def test_minimal_field_mask_body_endpoint_timeout_and_closed_client(monkeypatch)
         assert set(FIELD_MASK.split(",")) == {
             "places.id", "places.displayName", "places.addressComponents", "places.primaryType", "places.types",
         }
-        assert json.loads(request.content) == {"textQuery": "laser engraving service wood Belgrade RS",
+        assert json.loads(request.content) == {"textQuery": "laser engraving service wood Belgrade Serbia",
             "pageSize": MAX_RESULTS_PER_QUERY, "languageCode": "en"}
         assert request.extensions["timeout"] == {
             kind: REQUEST_TIMEOUT_SECONDS for kind in ("connect", "read", "write", "pool")}

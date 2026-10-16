@@ -1,5 +1,6 @@
 """Small, deterministic manufacturing searches; no parsing service or geocoding."""
 
+from backend.discovery.countries import country_query_text
 from backend.discovery.profile_builder import normalize_term
 
 
@@ -21,7 +22,8 @@ def build_queries(specification: dict) -> list[str]:
     processes = sorted({normalize_term(term) for term in specification.get("process", [])})
     materials = {normalize_term(term) for term in specification.get("materials", [])}
     location = specification.get("location") or {}
-    suffix = " ".join(" ".join((location.get(key) or "").split()) for key in ("city", "country")).strip()
+    city = " ".join((location.get("city") or "").split())
+    suffix = " ".join(value for value in (city, country_query_text(location.get("country"))) if value)
     families = []
     for process in processes:
         templates = PROCESS_QUERIES.get(process)

@@ -565,16 +565,17 @@ taxonomy remains unchanged (`cnc_milling`, for example).
 For laser engraving on plywood in Belgrade, RS, the queries are:
 
 ```text
-laser engraving service wood Belgrade RS
-laser engraving workshop wood Belgrade RS
-custom laser engraving wood Belgrade RS
+laser engraving service wood Belgrade Serbia
+laser engraving workshop wood Belgrade Serbia
+custom laser engraving wood Belgrade Serbia
 ```
 
-CNC on wood starts with `CNC wood machining service Belgrade RS`; 3D printing
-starts with `3D printing service Belgrade RS`.
+CNC on wood starts with `CNC wood machining service Belgrade Serbia`; 3D printing
+starts with `3D printing service Belgrade Serbia`. Explicit `RS` country text is
+expanded to `Serbia` in search queries only; the stored specification is unchanged.
 
 The client sends `POST https://places.googleapis.com/v1/places:searchText` with
-`pageSize: 5`, `languageCode: en` and this exact `X-Goog-FieldMask`:
+`pageSize: 5`, `languageCode: en`, an optional `regionCode`, and this exact `X-Goog-FieldMask`:
 
 ```text
 places.id,places.displayName,places.addressComponents,places.primaryType,places.types
@@ -582,6 +583,26 @@ places.id,places.displayName,places.addressComponents,places.primaryType,places.
 
 Structured address components provide locality and country without guessing from
 a formatted address or assigning the requested location to search results.
+When the specification contains a valid two-letter CLDR country/territory code,
+Text Search receives its uppercase `regionCode` (for example `RS`). Unsupported,
+deprecated, three-letter or free-text country values are not sent as region codes.
+Google documents `regionCode` as a formatting/search hint, not a country boundary;
+see [Text Search regionCode](https://developers.google.com/maps/documentation/places/web-service/text-search#regioncode).
+
+An explicitly requested country is also a hard relevance filter on returned
+structured country address components. A different, missing or ambiguous country
+is excluded before deduplication, candidate limits, scoring, persistence or
+enrichment. Country codes use the returned short code preferentially; the existing
+`Serbia`/`RS` normalization and explicit country-name/returned-long-name matching
+are supported. Business names, formatted addresses, query text and inferred
+locations cannot satisfy the filter. Countryless requests omit `regionCode` and
+retain the existing unfiltered behavior, including unknown locations. City matching
+and scoring remain unchanged: another city in the requested country can still
+qualify, with the existing lower location score. Filtering may produce fewer or
+zero candidates; no extra queries, retries or foreign-country fallback are added.
+Previously stored rankings are snapshots; rediscover to replace any results from
+before this filter was introduced.
+
 Unused formatted addresses and coordinates are not requested. Names, address
 components and type fields use the Text Search Pro tier, not ID-only pricing;
 see [Google's field-mask and billing documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).

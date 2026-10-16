@@ -5,6 +5,8 @@ import re
 
 import httpx
 
+from backend.discovery.countries import region_code as supported_region_code
+
 
 TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places/"
@@ -33,12 +35,16 @@ class GooglePlacesClient:
             raise DiscoveryConfigurationError("GOOGLE_PLACES_API_KEY is required for google_places discovery")
         self.transport = transport
 
-    def text_search(self, query: str) -> list[dict]:
+    def text_search(self, query: str, *, region_code: str | None = None) -> list[dict]:
+        payload = {"textQuery": query, "pageSize": MAX_RESULTS_PER_QUERY, "languageCode": "en"}
+        region = supported_region_code(region_code)
+        if region:
+            payload["regionCode"] = region
         try:
             with httpx.Client(transport=self.transport, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False) as client:
                 response = client.post(TEXT_SEARCH_URL, headers={
                     "X-Goog-Api-Key": self._api_key, "X-Goog-FieldMask": FIELD_MASK,
-                }, json={"textQuery": query, "pageSize": MAX_RESULTS_PER_QUERY, "languageCode": "en"})
+                }, json=payload)
                 if not 200 <= response.status_code < 300:
                     raise DiscoveryProviderError("Google Places search failed; check provider configuration and quota")
                 body = response.json()

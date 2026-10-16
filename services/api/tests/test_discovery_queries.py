@@ -4,15 +4,15 @@ from backend.discovery.query_builder import MAX_QUERIES, build_queries
 
 
 @pytest.mark.parametrize("process,materials,expected", [
-    ("laser_engraving", ["plywood"], "laser engraving service wood Belgrade RS"),
-    ("laser_cutting", ["acrylic"], "laser cutting service Belgrade RS"),
-    ("cnc", ["wood"], "CNC wood machining service Belgrade RS"),
-    ("cnc_milling", ["steel"], "CNC machining service Belgrade RS"),
-    ("cnc_machining", ["plywood"], "CNC wood machining service Belgrade RS"),
-    ("cnc_wood", ["plywood"], "CNC wood machining service Belgrade RS"),
-    ("3d_print", ["pla"], "3D printing service Belgrade RS"),
-    ("prototyping", ["wood"], "rapid prototyping service Belgrade RS"),
-    ("maker_workshop", ["wood"], "maker fabrication workshop Belgrade RS"),
+    ("laser_engraving", ["plywood"], "laser engraving service wood Belgrade Serbia"),
+    ("laser_cutting", ["acrylic"], "laser cutting service Belgrade Serbia"),
+    ("cnc", ["wood"], "CNC wood machining service Belgrade Serbia"),
+    ("cnc_milling", ["steel"], "CNC machining service Belgrade Serbia"),
+    ("cnc_machining", ["plywood"], "CNC wood machining service Belgrade Serbia"),
+    ("cnc_wood", ["plywood"], "CNC wood machining service Belgrade Serbia"),
+    ("3d_print", ["pla"], "3D printing service Belgrade Serbia"),
+    ("prototyping", ["wood"], "rapid prototyping service Belgrade Serbia"),
+    ("maker_workshop", ["wood"], "maker fabrication workshop Belgrade Serbia"),
 ])
 def test_supported_process_queries_are_bounded_specific_and_deterministic(process, materials, expected):
     specification = {"process": [process], "materials": materials,
@@ -21,12 +21,15 @@ def test_supported_process_queries_are_bounded_specific_and_deterministic(proces
     assert queries == build_queries(specification)
     assert queries[0] == expected
     assert len(queries) == MAX_QUERIES == len(set(queries)) == 3
-    assert all(query.endswith("Belgrade RS") for query in queries)
+    assert all(query.endswith("Belgrade Serbia") for query in queries)
 
 
 @pytest.mark.parametrize("location,suffix", [
     (None, ""), ({}, ""), ({"city": "Novi Sad"}, " Novi Sad"),
-    ({"country": "RS"}, " RS"), ({"city": " New   York ", "country": " US "}, " New York US"),
+    ({"country": "RS"}, " Serbia"), ({"city": " New   York ", "country": " US "}, " New York US"),
+    ({"city": " Bor ", "country": " rs "}, " Bor Serbia"),
+    ({"city": "Bor", "country": "Serbia"}, " Bor Serbia"),
+    ({"city": "Bor", "country": "   "}, " Bor"),
 ])
 def test_optional_location_is_used_without_inventing_one(location, suffix):
     assert build_queries({"process": ["laser_engraving"], "materials": ["acrylic"],
