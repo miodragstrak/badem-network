@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from backend.discovery import models
 from backend.discovery.enrichment import MAX_ENRICH_TOP_N, apply_enrichment
+from backend.discovery.geo import RELEVANCE_CATEGORIES, coordinates, ranking_key, straight_line_km
 from backend.discovery.mock_provider import MockDiscoveryProvider
 from backend.discovery.places_client import DiscoveryProviderError
 from backend.discovery.profile_builder import build_profile
@@ -78,6 +79,7 @@ class DiscoveryService:
             "score_breakdown": profile["score_breakdown"], "source": row["source"],
             "is_mock": row["source"] == models.MOCK_SOURCE,
             "verification_status": row["verification_status"], "disclaimer": profile["disclaimer"],
+            "distance_km": profile.get("distance_km"),
         }
         if detailed:
             result.update({"source_place_id": row["source_place_id"],
@@ -87,6 +89,9 @@ class DiscoveryService:
 
     def results(self, connection, request: dict) -> dict:
         rows = models.get_candidates(connection, request["id"])
+        specification = models.get_specification(connection, request["id"])
+        if specification and coordinates(specification["payload"].get("location")) is not None:
+            rows.sort(key=lambda row: ranking_key(json.loads(row["profile_json"]), row["source_place_id"], geo=True))
         source = rows[0]["source"] if rows else getattr(self.provider, "source", models.MOCK_SOURCE)
         return {"request_id": request["id"], "status": request["status"], "provider": source,
                 "candidates": [self.candidate_response(row) for row in rows]}
@@ -103,9 +108,15 @@ class DiscoveryService:
         except DiscoveryProviderError as error:
             raise HTTPException(error.status_code, str(error)) from None
         results = []
+        origin = coordinates(specification["payload"].get("location"))
         for partner in partners:
             profile = build_profile(partner)
+            destination = coordinates(profile["location"])
+            if origin is not None and destination is not None:
+                profile["distance_km"] = round(straight_line_km(origin, destination), 3)
             score = score_profile(specification["payload"], profile)
+            if not any(score.score_breakdown[category] > 0 for category in RELEVANCE_CATEGORIES):
+                continue
             profile.update({"fit_score": score.fit_score, "fit_label": score.fit_label, "confidence": score.confidence,
                             "fit_summary": f"{score.fit_label} based on public data",
                             "reasoning": score.reasoning, "score_breakdown": score.score_breakdown})
@@ -118,7 +129,7 @@ class DiscoveryService:
         enrich = getattr(self.provider, "enrich", None)
         if enrich is not None and getattr(self.provider, "source", None) == models.GOOGLE_SOURCE:
             limit = max(0, min(getattr(self.provider, "enrich_top_n", 0), MAX_ENRICH_TOP_N))
-            ranked = sorted(results, key=lambda row: (-row["profile"]["fit_score"], row["source_place_id"]))
+            ranked = sorted(results, key=lambda row: ranking_key(row["profile"], row["source_place_id"], geo=origin is not None))
             for result in ranked[:limit]:
                 profile = result["profile"]
                 try:

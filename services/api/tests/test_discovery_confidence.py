@@ -156,9 +156,7 @@ def test_google_discovery_confidence_is_request_fit_specific_and_persisted(googl
     assert len(calls) == 3
     result = response.json()
     by_name = {candidate["name"]: candidate for candidate in result["candidates"]}
-    cutting = by_name[CUTTING_NAME]
-    assert (cutting["fit_score"], cutting["fit_label"], cutting["confidence"]) == (10, "Low-confidence fit", "low")
-    assert cutting["score_breakdown"]["process_match"] == cutting["score_breakdown"]["material_signal"] == 0
+    assert CUTTING_NAME not in by_name
     assert by_name[names["penda"]]["fit_score"] == 60
     assert by_name[names["penda"]]["confidence"] == "medium"
     assert by_name[names["graver"]]["fit_label"] == "Possible fit"
@@ -172,22 +170,16 @@ def test_google_discovery_confidence_is_request_fit_specific_and_persisted(googl
     assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == result
     with sqlite3.connect(db_path) as connection:
         row = connection.execute("SELECT confidence,profile_json FROM public_capacity_profiles WHERE candidate_id=?",
-                                 (cutting["candidate_id"],)).fetchone()
+                                 (by_name[WOOD_NAME]["candidate_id"],)).fetchone()
         assert row[0] == json.loads(row[1])["confidence"] == "low"
 
 
-def test_enriched_google_activity_does_not_upgrade_a_mismatched_process_fit(enriched_setup):
+def test_enrichment_cannot_rescue_a_mismatched_process_without_manufacturing_relevance(enriched_setup):
     client, _, _, upstream = enriched_setup
     upstream.records = [listing("cutting", CUTTING_NAME)]
     result = run_discovery(enriched_setup)
-    assert upstream.detail_ids() == ["cutting"]
-    candidate = result["candidates"][0]
-    assert (candidate["fit_score"], candidate["fit_label"], candidate["confidence"]) == (15, "Low-confidence fit", "low")
-    assert candidate["score_breakdown"]["public_activity_signal"] == 5
-    profile = candidate_detail(client, candidate)["partner_profile"]
-    assert profile["confidence"] == "low"
-    assert profile["inferred_capabilities"] == [{"capability": "laser_cutting", "confidence": .75,
-        "evidence": ["business name contains 'lasersko secenje'"]}]
+    assert upstream.detail_ids() == []
+    assert result["candidates"] == []
 
 
 def test_exact_reasoning_survives_google_discovery_database_storage_and_api_reads(enriched_setup):
@@ -211,19 +203,23 @@ def test_exact_reasoning_survives_google_discovery_database_storage_and_api_read
 
 def test_legacy_persisted_typos_and_location_only_confidence_are_corrected_without_network_or_rewrites(enriched_setup):
     client, db_path, request_id, upstream = enriched_setup
-    upstream.records = [listing("cutting", CUTTING_NAME)]
-    specify(client, request_id, {**SPECIFICATION, "location": {"city": "Novi Sad", "country": "RS"}})
+    upstream.records = [listing("penda", "Penda lasersko graviranje")]
+    specification = {**SPECIFICATION, "location": {"city": "Novi Sad", "country": "RS"}}
+    specify(client, request_id, specification)
     candidate = run_discovery(enriched_setup)["candidates"][0]
+    # Seed a historical location/activity-only snapshot, which new discovery now excludes.
+    legacy = public_profile(CUTTING_NAME)
+    apply_enrichment(legacy, derive_public_evidence(DETAILS))
+    score = score_profile(specification, legacy)
+    legacy.update({"fit_score": score.fit_score, "fit_label": score.fit_label,
+                   "fit_summary": f"{score.fit_label} based on public data", "score_breakdown": score.score_breakdown})
     with sqlite3.connect(db_path) as connection:
-        row = connection.execute("SELECT profile_json FROM public_capacity_profiles WHERE candidate_id=?",
-                                 (candidate["candidate_id"],)).fetchone()
-        legacy = json.loads(row[0])
         legacy["confidence"] = "medium"
         legacy["reasoning"] = [OPERATIONAL_SENTENCE.replace("are not", "arenot"),
                                COUNTRY_SENTENCE.replace("is not", "isnot")]
         encoded = json.dumps(legacy)
-        connection.execute("UPDATE public_capacity_profiles SET profile_json=?,confidence='medium' WHERE candidate_id=?",
-                           (encoded, candidate["candidate_id"]))
+        connection.execute("UPDATE public_capacity_profiles SET profile_json=?,fit_score=?,fit_label=?,confidence='medium' WHERE candidate_id=?",
+                           (encoded, score.fit_score, score.fit_label, candidate["candidate_id"]))
     before_calls = len(upstream.searches) + len(upstream.details)
     read = client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json()["candidates"][0]
     assert read["confidence"] == "low"

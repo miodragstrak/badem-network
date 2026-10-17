@@ -2,6 +2,7 @@
 
 import re
 
+from backend.discovery.geo import coordinates
 from backend.discovery.models import DISCLAIMER, GOOGLE_SOURCE, MOCK_SOURCE, VERIFICATION_STATUS, PublicPartnerData
 from backend.discovery.signals import extract_public_signals
 
@@ -51,10 +52,14 @@ def build_profile(partner: PublicPartnerData) -> dict:
         confidence = "medium" if any(item["confidence"] >= .65 for item in capabilities) else "low"
         material_signals = sorted(set(material_signals) | public_signals.materials)
         laser_related_name = public_signals.laser_related_name
+    location = {"city": partner.city, "country": partner.country}
+    point = coordinates({"latitude": partner.latitude, "longitude": partner.longitude})
+    if point is not None:
+        location.update({"latitude": point[0], "longitude": point[1]})
     return {
         "display_name": partner.display_name,
         "location_summary": ", ".join(value for value in (partner.city, partner.country) if value) or "Location unavailable",
-        "location": {"city": partner.city, "country": partner.country},
+        "location": location,
         "signals": {
             "laser_related_name": laser_related_name,
             "website_signal": bool(partner.website_keywords),

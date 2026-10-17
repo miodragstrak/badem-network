@@ -6,7 +6,10 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+
+from backend.discovery.countries import region_code
+from backend.discovery.geo import coordinates
 
 RequestStatus = Literal["DRAFT", "SPECIFIED", "DISCOVERY_READY", "DISCOVERY_COMPLETE"]
 FitLabel = Literal["Strong potential fit", "Potential fit", "Possible fit", "Low-confidence fit"]
@@ -32,10 +35,40 @@ class ManufacturingRequest(NewManufacturingRequest):
 
 
 class SpecificationLocation(BaseModel):
+    """Canonical optional location; legacy city/country payloads remain valid."""
     model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
 
+    display_name: str | None = Field(default=None, min_length=1, max_length=240)
     city: str | None = Field(default=None, min_length=1, max_length=120)
     country: str | None = Field(default=None, min_length=1, max_length=120)
+    country_code: str | None = None
+    latitude: float | None = Field(default=None, strict=True, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, strict=True, ge=-180, le=180, allow_inf_nan=False)
+
+    @field_validator("country_code")
+    @classmethod
+    def supported_country(cls, value):
+        if value is not None and region_code(value) is None:
+            raise ValueError("country_code must be a supported two-letter country code")
+        return region_code(value)
+
+    @field_validator("latitude", "longitude", mode="before")
+    @classmethod
+    def numeric_coordinate(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Coordinates must be numbers")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_location(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Provide both latitude and longitude")
+        if self.latitude is not None and coordinates(self.model_dump()) is None:
+            raise ValueError("Invalid location coordinates")
+        legacy_code = region_code(self.country) or ("RS" if (self.country or "").casefold() == "serbia" else None)
+        if self.country_code and legacy_code and self.country_code != legacy_code:
+            raise ValueError("country and country_code must agree")
+        return self
 
 
 class ManufacturingSpecificationPayload(BaseModel):
@@ -86,6 +119,8 @@ class PartnerCandidate(BaseModel):
     is_mock: bool
     verification_status: Literal["PUBLIC_DATA_ONLY"]
     disclaimer: str
+    distance_km: float | None = Field(default=None, ge=0, allow_inf_nan=False,
+                                     description="Derived straight-line distance, not driving distance; null when unavailable.")
 
 
 class PartnerCandidateDetail(PartnerCandidate):

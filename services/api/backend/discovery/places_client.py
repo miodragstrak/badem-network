@@ -6,11 +6,13 @@ import re
 import httpx
 
 from backend.discovery.countries import region_code as supported_region_code
+from backend.discovery.geo import search_rectangle
 
 
 TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places/"
 FIELD_MASK = "places.id,places.displayName,places.addressComponents,places.primaryType,places.types"
+GEO_FIELD_MASK = FIELD_MASK + ",places.location"
 DETAILS_FIELD_MASK = "websiteUri,rating,userRatingCount,businessStatus"
 MAX_RESULTS_PER_QUERY = 5
 REQUEST_TIMEOUT_SECONDS = 5
@@ -35,15 +37,25 @@ class GooglePlacesClient:
             raise DiscoveryConfigurationError("GOOGLE_PLACES_API_KEY is required for google_places discovery")
         self.transport = transport
 
-    def text_search(self, query: str, *, region_code: str | None = None) -> list[dict]:
+    def text_search(self, query: str, *, region_code: str | None = None,
+                    center: tuple[float, float] | None = None, radius_km: int | None = None) -> list[dict]:
         payload = {"textQuery": query, "pageSize": MAX_RESULTS_PER_QUERY, "languageCode": "en"}
+        mask = FIELD_MASK
+        if center is not None or radius_km is not None:
+            try:
+                if center is None:
+                    raise ValueError("Missing search center")
+                payload["locationRestriction"] = {"rectangle": search_rectangle(center, radius_km)}
+            except (ValueError, TypeError):
+                raise DiscoveryProviderError("Invalid discovery search area") from None
+            mask = GEO_FIELD_MASK
         region = supported_region_code(region_code)
         if region:
             payload["regionCode"] = region
         try:
             with httpx.Client(transport=self.transport, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False) as client:
                 response = client.post(TEXT_SEARCH_URL, headers={
-                    "X-Goog-Api-Key": self._api_key, "X-Goog-FieldMask": FIELD_MASK,
+                    "X-Goog-Api-Key": self._api_key, "X-Goog-FieldMask": mask,
                 }, json=payload)
                 if not 200 <= response.status_code < 300:
                     raise DiscoveryProviderError("Google Places search failed; check provider configuration and quota")

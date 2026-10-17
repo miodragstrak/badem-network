@@ -277,8 +277,8 @@ def test_google_api_results_are_ranked_public_only_and_do_not_store_raw_payloads
     assert result["provider"] == models.GOOGLE_SOURCE
     assert result["status"] == "DISCOVERY_COMPLETE"
     assert len(calls) == 3
-    assert [candidate["fit_score"] for candidate in result["candidates"]] == [80, 5]
-    for candidate, place_id in zip(result["candidates"], ("test-place-1", "test-place-2")):
+    assert [candidate["fit_score"] for candidate in result["candidates"]] == [80]
+    for candidate, place_id in zip(result["candidates"], ("test-place-1",)):
         assert candidate["source"] == models.GOOGLE_SOURCE
         assert candidate["is_mock"] is False
         assert candidate["verification_status"] == models.VERIFICATION_STATUS
@@ -299,7 +299,7 @@ def test_google_api_results_are_ranked_public_only_and_do_not_store_raw_payloads
         assert "displayName" not in stored
         assert "addressComponents" not in stored
         assert "test-only-placeholder" not in stored
-        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (2,)
+        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (1,)
         for table in ("jobs", "machine_events", "production_proofs", "proof_anchors"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
 
@@ -394,10 +394,10 @@ def test_multilingual_google_candidates_rank_by_signals_with_exact_disclaimer_an
     response = discover(client, request_id)
     assert response.status_code == 200, response.text
     candidates = response.json()["candidates"]
-    assert len(candidates) == 5
+    assert len(candidates) == 4
     assert len(calls) == 3
     assert candidates[0]["name"] == names["explicit"]
-    assert candidates[-1]["name"] == names["unrelated"]
+    assert names["unrelated"] not in {candidate["name"] for candidate in candidates}
     by_name = {candidate["name"]: candidate for candidate in candidates}
     explicit = by_name[names["explicit"]]
     generic = by_name[names["laser"]]
@@ -426,7 +426,7 @@ def test_multilingual_google_candidates_rank_by_signals_with_exact_disclaimer_an
     with sqlite3.connect(db_path) as connection:
         stored = " ".join(row[0] for row in connection.execute("SELECT profile_json FROM public_capacity_profiles"))
         assert "lasersko graviranje" in stored
-        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (5,)
+        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (4,)
     assert client.get(f"/api/manufacturing-requests/{request_id}/candidates", headers=ADMIN).json() == response.json()
     assert discover(client, request_id).json() == response.json()
 

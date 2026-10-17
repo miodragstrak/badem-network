@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from backend.discovery.enrichment import enrichment_reasoning, public_activity_points
+from backend.discovery.geo import location_country
 from backend.discovery.models import GOOGLE_SOURCE
 from backend.discovery.profile_builder import normalize_term
 from backend.discovery.reasoning import COUNTRY_LOCATION_REASON, canonical_reasoning
@@ -84,12 +85,12 @@ def score_profile(specification: dict, profile: dict) -> FitScore:
             breakdown["public_activity_signal"] = public_activity_points(enriched_evidence)
     requested_location = specification.get("location") or {}
     city = normalize_term(requested_location.get("city") or "")
-    country = normalize_term(requested_location.get("country") or "")
+    country = normalize_term(location_country(requested_location))
     candidate_location = profile["location"]
     if public_signals is not None:
         city = normalize_term(normalize_text(requested_location.get("city") or ""))
-        country = normalize_term(normalize_text(requested_location.get("country") or ""))
-        candidate_location = {key: normalize_text(value) for key, value in candidate_location.items()}
+        country = normalize_term(normalize_text(location_country(requested_location)))
+        candidate_location = {key: normalize_text(candidate_location[key]) for key in ("city", "country")}
     same_country = country == normalize_term(candidate_location["country"])
     if city and city == normalize_term(candidate_location["city"]) and (not country or same_country):
         breakdown["location_suitability"] = 10

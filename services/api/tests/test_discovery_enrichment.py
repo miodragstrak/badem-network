@@ -262,7 +262,7 @@ def test_default_top_three_are_selected_from_base_ranking_once_then_reranked(enr
     assert len(upstream.searches) == 3
     assert upstream.detail_ids() == BASE_TOP_THREE
     assert len(set(upstream.detail_ids())) == 3
-    assert len(result["candidates"]) == 8
+    assert len(result["candidates"]) == 6
     assert [candidate["fit_score"] for candidate in result["candidates"]][:3] == [85, 65, 45]
     for candidate in result["candidates"]:
         detail = candidate_detail(client, candidate)
@@ -288,7 +288,7 @@ def test_default_top_three_are_selected_from_base_ranking_once_then_reranked(enr
         assert all(raw not in stored for raw in (
             "websiteUri", "userRatingCount", "businessStatus", "listing.invalid", "must-not-persist", '"rating":', "4.7",
             "unrequestedPrivateField", "raw-details-must-not-persist"))
-        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (8,)
+        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (6,)
         for table in ("jobs", "machine_events", "production_proofs", "proof_anchors"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
 
@@ -306,12 +306,12 @@ def test_configured_limit_enriches_only_that_many_base_candidates(enriched_setup
 
 def test_fewer_candidates_and_empty_search_do_not_spend_unused_detail_budget(enriched_setup):
     _, _, _, upstream = enriched_setup
-    upstream.records = upstream.records[:1]
+    upstream.records = [listing("p-f", NAMES["p-f"])]
     assert len(run_discovery(enriched_setup)["candidates"]) == 1
-    assert upstream.detail_ids() == ["p-a"]
+    assert upstream.detail_ids() == ["p-f"]
     upstream.records = []
     assert run_discovery(enriched_setup)["candidates"] == []
-    assert upstream.detail_ids() == ["p-a"]
+    assert upstream.detail_ids() == ["p-f"]
 
 
 @pytest.mark.parametrize("limit,expected_requests", [(99, 5), (-1, 0)])
@@ -349,7 +349,7 @@ def test_one_failed_enrichment_preserves_base_score_and_other_candidates(enriche
     upstream.detail_results["p-f"] = failure
     result = run_discovery(enriched_setup)
     assert upstream.detail_ids() == BASE_TOP_THREE
-    assert len(result["candidates"]) == 8
+    assert len(result["candidates"]) == 6
     failed = next(candidate for candidate in result["candidates"] if candidate["name"] == NAMES["p-f"])
     base = build_profile(normalize_place(listing("p-f", NAMES["p-f"])))
     score = score_profile(SPECIFICATION, base)

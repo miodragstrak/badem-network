@@ -184,7 +184,10 @@ def test_mock_discovery_persists_ranked_unverified_profiles_and_read_endpoints(s
     assert result["status"] == "DISCOVERY_COMPLETE"
     assert result["provider"] == "MOCK_PUBLIC_DATA"
     candidates = result["candidates"]
-    assert len(candidates) == 5
+    assert len(candidates) == 3
+    assert {candidate["name"] for candidate in candidates} == {
+        "Laser Studio Belgrade", "Maker Workshop Serbia", "CNC Wood Lab",
+    }
     assert candidates[0]["name"] == "Laser Studio Belgrade"
     scores = [candidate["fit_score"] for candidate in candidates]
     assert scores == sorted(scores, reverse=True)
@@ -217,7 +220,7 @@ def test_mock_discovery_persists_ranked_unverified_profiles_and_read_endpoints(s
     assert client.get(f"/api/manufacturing-requests/{request_id}", headers=ADMIN).json()["status"] == "DISCOVERY_COMPLETE"
     with sqlite3.connect(db_path) as connection:
         for table in ("partner_candidates", "public_capacity_profiles"):
-            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (5,)
+            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (3,)
         for table in ("jobs", "machine_events", "production_proofs", "proof_anchors"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
 
@@ -234,7 +237,7 @@ def test_repeated_discovery_is_stable_and_does_not_touch_other_requests(setup):
     assert {c["candidate_id"] for c in first["candidates"]}.isdisjoint({c["candidate_id"] for c in other["candidates"]})
     with sqlite3.connect(db_path) as connection:
         for table in ("partner_candidates", "public_capacity_profiles"):
-            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (10,)
+            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (6,)
 
 
 def test_refreshed_timestamp_changes_but_creation_and_ids_are_preserved(setup):
@@ -273,7 +276,7 @@ def test_specification_replacement_invalidates_results_and_changes_ranking(setup
     assert current["candidates"][0]["name"] == "3D Print & Prototype Studio"
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM manufacturing_specifications").fetchone() == (1,)
-        assert connection.execute("SELECT COUNT(*) FROM public_capacity_profiles").fetchone() == (5,)
+        assert connection.execute("SELECT COUNT(*) FROM public_capacity_profiles").fetchone() == (2,)
 
 
 def test_requests_profiles_and_scores_survive_restart(setup):
@@ -296,8 +299,8 @@ def test_concurrent_rediscovery_keeps_one_profile_per_candidate(setup):
     assert all(response.status_code == 200 for response in responses)
     assert responses[0].json() == responses[1].json()
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (5,)
-        assert connection.execute("SELECT COUNT(*) FROM public_capacity_profiles").fetchone() == (5,)
+        assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (3,)
+        assert connection.execute("SELECT COUNT(*) FROM public_capacity_profiles").fetchone() == (3,)
 
 
 def test_provider_failure_rolls_back_status_and_retains_prior_results(setup):
@@ -355,8 +358,8 @@ def test_future_taxonomy_is_stored_without_inventing_a_capability(setup):
     payload = {"process": ["future_process"], "materials": ["future_material"]}
     assert specify(client, request_id, payload).status_code == 201
     result = discover(client, request_id).json()
-    assert all(candidate["fit_label"] == "Low-confidence fit" for candidate in result["candidates"])
-    assert all(candidate["score_breakdown"]["process_match"] == 0 for candidate in result["candidates"])
+    assert result["status"] == "DISCOVERY_COMPLETE"
+    assert result["candidates"] == []
 
 
 def test_direct_specification_validation_rejects_nonfinite_json():

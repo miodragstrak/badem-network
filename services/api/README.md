@@ -566,16 +566,20 @@ For laser engraving on plywood in Belgrade, RS, the queries are:
 
 ```text
 laser engraving service wood Belgrade Serbia
-laser engraving workshop wood Belgrade Serbia
-custom laser engraving wood Belgrade Serbia
+laser cutting service wood Belgrade Serbia
+sign making wood Belgrade Serbia
 ```
 
 CNC on wood starts with `CNC wood machining service Belgrade Serbia`; 3D printing
 starts with `3D printing service Belgrade Serbia`. Explicit `RS` country text is
 expanded to `Serbia` in search queries only; the stored specification is unchanged.
+V1.2A adds bounded related-workshop terms in `PROCESS_QUERIES`. The laser-engraving
+pool also includes custom fabrication, woodworking and CNC / laser workshop.
+Search phrases broaden retrieval, never become evidence of capability. Multiple
+processes still share one deterministic, deduplicated query pool, not separate budgets.
 
 The client sends `POST https://places.googleapis.com/v1/places:searchText` with
-`pageSize: 5`, `languageCode: en`, an optional `regionCode`, and this exact `X-Goog-FieldMask`:
+`pageSize: 5`, `languageCode: en`, an optional `regionCode`, and this legacy `X-Goog-FieldMask`:
 
 ```text
 places.id,places.displayName,places.addressComponents,places.primaryType,places.types
@@ -599,11 +603,13 @@ locations cannot satisfy the filter. Countryless requests omit `regionCode` and
 retain the existing unfiltered behavior, including unknown locations. City matching
 and scoring remain unchanged: another city in the requested country can still
 qualify, with the existing lower location score. Filtering may produce fewer or
-zero candidates; no extra queries, retries or foreign-country fallback are added.
+zero candidates; no foreign-country fallback or country inference is added.
 Previously stored rankings are snapshots; rediscover to replace any results from
 before this filter was introduced.
 
-Unused formatted addresses and coordinates are not requested. Names, address
+Unused formatted addresses are not requested. Coordinate-aware searches also
+request `places.location` through this same Text Search API; legacy text-only
+searches retain their existing field mask. Names, address
 components and type fields use the Text Search Pro tier, not ID-only pricing;
 see [Google's field-mask and billing documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).
 No wildcard, website, reviews, ratings, phone numbers, opening hours, photos,
@@ -612,9 +618,12 @@ adds the separate bounded Place Details stage below, without widening this mask.
 
 Hard limits (constants, not unbounded environment overrides):
 
-- Maximum 3 queries per discovery run.
+- Maximum 3 Text Search calls for city/country-only requests.
+- Maximum 9 Text Search calls for coordinate-aware requests: at most 3 per radius.
 - Maximum 5 results per query, also enforced when reading the response.
-- Maximum 10 unique candidates; stop searching once reached.
+- Maximum 10 returned/persisted unique candidates. Geo search inspects at most
+  45 bounded results and selects by relevance/distance; unrelated candidates cannot
+  exhaust the retained-candidate budget before useful workshops are considered.
 - HTTPX timeout of 5 seconds for each connect/read/write/pool operation.
 - Clients close after each request; environment proxy settings are ignored.
 
@@ -629,6 +638,84 @@ confidence and lower scores than richer fictional fixtures. Only existing
 normalized profile fields and source IDs are persisted, not raw Places payloads.
 The selected top candidates can additionally carry the derived enrichment
 metadata described below.
+
+### Geo Discovery V1.2A
+
+The specification's `location` can now use a canonical location, for example:
+
+```json
+{
+  "display_name": "Bor, Serbia",
+  "city": "Bor",
+  "country_code": "RS",
+  "latitude": 44.074,
+  "longitude": 22.095
+}
+```
+
+These are explicit caller-supplied coordinates, not a geocoded city. Latitude
+and longitude must be provided together, finite numeric values within -90..90
+and -180..180. Zero is valid; booleans and numeric strings are rejected. Optional
+`country_code` is normalized to a supported uppercase two-letter code. Legacy
+`{"city":"Bor","country":"RS"}` specifications still round-trip unchanged.
+Conflicting legacy/canonical country codes are rejected; when both country
+fields exist, returned Google addresses must satisfy both. A display label or
+coordinates alone never infer a country. No geocoding or location lookup occurs.
+
+For valid coordinates, search uses 25 km, then 50 km, then 100 km. At each stage
+at most three deterministic queries are sent. If at least five unique candidates
+have both a positive existing process-match signal and a known in-radius distance,
+expansion stops after that stage. Otherwise it stops at 100 km / nine calls even
+when results are sparse, duplicated, irrelevant or missing coordinates. The
+six-term laser pool uses its first three terms at 25 km, the next three at 50 km,
+and repeats the first three in the wider 100 km area. Multi-process pools use the
+same rotating three-query slices, with a hard maximum of nine calls overall.
+No pagination, retries or caller-controlled radius/query budget is added.
+
+The existing Google Text Search endpoint receives a rectangular
+`locationRestriction`, enclosing the current radius. A local haversine check
+then excludes known coordinates outside the actual circular radius, including
+rectangle corners. The rectangle handles dateline crossing and polar bounds.
+This supports 100 km without exceeding Google's 50 km circle-bias limit; see
+[Google Text Search geometry](https://developers.google.com/maps/documentation/places/web-service/text-search).
+Geo queries do not repeat the city/display label, so that text cannot pin all
+expanded searches to the original town. Explicit country filtering remains hard
+at every stage, before enrichment. Legacy requests retain textual city scoring
+and the three-call cap without any invented coordinates or distance.
+
+Candidate list and profile responses expose optional `distance_km`: straight-line
+spherical distance in kilometres, rounded to three decimal places, **not driving
+distance**, travel time or a service/availability guarantee. Missing/invalid
+candidate coordinates produce `null`, never zero or a guessed city-centre point.
+Such candidates can remain public-data matches, but do not establish proximity
+or count toward the five-geolocated-candidate stop condition.
+
+The existing six score categories, weights, confidence rules and integer 0-100
+`fit_score` are unchanged. Before enrichment/ranking and persistence, candidates
+must have a positive process, material, equipment or business-specialization
+score. Location and public activity alone never qualify a new candidate; a
+material-only match can still qualify without claiming a matching process.
+This gate applies to both geo and legacy text-only discovery. Existing stored
+snapshots are unchanged until rediscovery.
+Geo ordering first compares the sum of process,
+material, equipment and specialization points; only then straight-line distance
+(known before unknown), then total fit score and stable Place ID. Thus a nearby
+unrelated business cannot outrank a farther workshop with manufacturing evidence.
+Numerical fit scores need not descend in this geo ordering. Enrichment selects
+its existing bounded top N using that same order; its activity points cannot
+override manufacturing relevance or proximity. Text-only ordering remains
+descending fit score with stable Place ID ties.
+
+Coordinates and derived distance persist in the existing normalized profile JSON,
+not a second database. No destructive schema migration is needed; old profiles
+without distance remain readable. Specification replacement already invalidates
+old candidate snapshots, and ownership/specification are rechecked after provider
+I/O before committing. Private Beta identity, allowlisting, daily quotas and owner
+404s are unchanged; one discover dispatch still consumes one quota attempt,
+regardless of the bounded internal radius stages. Previously stored results need
+rediscovery to gain geometry/distance. No frontend map, browser geolocation,
+autocomplete, new paid API, pricing, quotes, availability, messaging or scheduling
+is introduced, and public-data signals still do not verify machine capacity.
 
 Timeouts return HTTP 504; upstream non-2xx, connection/protocol failures, invalid
 JSON and malformed response containers return HTTP 502 with sanitized messages.

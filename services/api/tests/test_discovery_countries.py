@@ -126,7 +126,8 @@ def test_full_country_names_can_match_returned_long_name_without_geocoding():
 
 def test_no_country_api_persists_foreign_and_unknown_locations_without_inference(google_setup):
     client, db_path, payload, calls = google_setup
-    payload["places"] = [listing("rs", city="Bor"), listing("us", city="Bor", country="US"), {"id": "unknown"}]
+    payload["places"] = [listing("rs", city="Bor"), listing("us", city="Bor", country="US"),
+                         {"id": "unknown", "displayName": {"text": "Laser Engraving Studio"}}]
     request_id = create_request(client)
     assert specify(client, request_id, {**SPECIFICATION, "location": {"city": "Bor"}}).status_code == 201
     response = discover(client, request_id)

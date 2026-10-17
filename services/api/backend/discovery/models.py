@@ -72,6 +72,8 @@ class PublicPartnerData:
     specializations: tuple[str, ...] = ()
     public_activity: bool = False
     source: str = MOCK_SOURCE
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class DiscoveryProvider(Protocol):
