@@ -37,6 +37,7 @@ test(
     }
     try {
       const publicKey = 'sb_publishable_browser_build_fixture_only'
+      const mapsKey = `AIza${'m'.repeat(35)}`
       const privilegedJwt = [
         Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64url'),
         Buffer.from(JSON.stringify({ role: 'service_role', marker: 'privileged-public-key-build-canary' })).toString('base64url'),
@@ -73,6 +74,8 @@ test(
               VITE_DEMO_URL: 'http://localhost:5173',
               VITE_SUPABASE_URL: 'https://beta.badem.network',
               VITE_SUPABASE_PUBLISHABLE_KEY: key,
+              VITE_GOOGLE_MAPS_BROWSER_KEY: app === 'web' && key === publicKey ? mapsKey : canaries.GOOGLE_PLACES_API_KEY,
+              VITE_GOOGLE_MAPS_MAP_ID: 'public_map_id_fixture',
             },
           },
         )
@@ -86,10 +89,9 @@ test(
           !/http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/.test(bundle),
           `${app}: local URL found in artifact`,
         )
-        assert.ok(
-          !/AIza[\w-]{35}/.test(bundle),
-          `${app}: Google key-shaped string found in artifact`,
-        )
+        if (app === 'web' && key === publicKey) assert.ok(bundle.includes(mapsKey), 'Explicit browser Maps key should reach the map loader')
+        else assert.ok(!bundle.includes(mapsKey))
+        assert.ok(!/AIza[\w-]{35}/.test(bundle.replaceAll(mapsKey, '')), `${app}: non-browser Google key found in artifact`)
         if (app === 'web') {
           assert.ok(!bundle.toLowerCase().includes('x-badem-user-id'), 'Internal identity header must not enter browser code')
           assert.ok(

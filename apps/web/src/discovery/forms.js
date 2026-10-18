@@ -1,3 +1,5 @@
+import { manualLocation, usableCoordinates } from './location.js'
+
 export const PROCESSES = [
   ['laser_engraving', 'Laser engraving'],
   ['laser_cutting', 'Laser cutting'],
@@ -78,8 +80,8 @@ export function requestPayload(values) {
 
 export function prefillSpecification(values) {
   // Split only the explicit location fields; never infer dimensions or processes from prose.
-  const [city = '', ...countryParts] = values.location.split(',')
-  const country = countryParts.join(',').trim()
+  const point = usableCoordinates(values)
+  const manual = point ? { city: '', country: '' } : manualLocation(values.location)
   return {
     process: 'laser_engraving',
     material: 'plywood',
@@ -89,8 +91,9 @@ export function prefillSpecification(values) {
     height: '',
     thickness: '',
     requirements: '',
-    city: city.trim(),
-    country: /^(serbia|srbija|rs)$/i.test(country) ? 'RS' : country,
+    location: values.location,
+    ...manual,
+    ...(point || {}),
   }
 }
 
@@ -105,8 +108,11 @@ export function validateSpecification(values) {
       errors[key] = 'Enter a positive dimension in mm or leave it empty.'
     }
   }
-  errors.city = textError(values.city, 120, false)
-  errors.country = textError(values.country, 120, false)
+  errors.location = textError(values.location || '', 240, false) ||
+    textError(values.city || '', 120, false) || textError(values.country || '', 120, false)
+  if ((values.latitude != null || values.longitude != null) && !usableCoordinates(values)) {
+    errors.location = 'Your location is invalid. Enter a city and country or share your location again.'
+  }
   const requirements = values.requirements
     .split('\n')
     .map((item) => item.trim())
@@ -133,6 +139,10 @@ export function specificationPayload(values) {
           : values[key].trim(),
       ]),
   )
+  const point = usableCoordinates(values)
+  const displayName = values.location?.trim()
+  if (displayName || point) location.display_name = displayName || 'Current location'
+  if (point) Object.assign(location, point)
   return {
     process: [values.process],
     materials: [values.material === 'other' ? values.customMaterial.trim() : values.material],

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MapPin, X } from 'lucide-react'
 import { humanize, processLabel, SCORE_CATEGORIES } from './forms.js'
+import { formatDistance, matchLabel } from './presentation.js'
 
 function SignalList({ label, values }) {
   return (
@@ -51,7 +52,7 @@ export default function PartnerProfile({ candidate, api, onClose }) {
 
   function keepFocusInside(event) {
     if (event.key !== 'Tab') return
-    const targets = [...dialog.current.querySelectorAll('button:not(:disabled), [tabindex="0"]')]
+    const targets = [...dialog.current.querySelectorAll('button:not(:disabled), summary, [tabindex="0"]')]
     const first = targets[0]
     const last = targets.at(-1)
     if (
@@ -111,13 +112,9 @@ export default function PartnerProfile({ candidate, api, onClose }) {
         {data && (
           <>
             <div className="discovery-profile-fit">
-              <strong>
-                {data.fit_score}
-                <small>/100</small>
-              </strong>
               <div>
-                <b>{data.fit_label}</b>
-                <span>Fit confidence: {humanize(data.confidence)}</span>
+                <b>{matchLabel(data)}</b>
+                {formatDistance(data.distance_km) && <span>{formatDistance(data.distance_km)} straight-line distance</span>}
               </div>
             </div>
             <p className="discovery-location">
@@ -195,8 +192,9 @@ export default function PartnerProfile({ candidate, api, onClose }) {
                 />
               </dl>
             </section>
-            <section className="discovery-profile-section">
-              <h3>Score breakdown</h3>
+            <details className="discovery-profile-section discovery-technical">
+              <summary>Technical fit details</summary>
+              <p>Public-signal score: {data.fit_score}/100. Fit confidence: {humanize(data.confidence)}.</p>
               <div className="discovery-breakdown">
                 {SCORE_CATEGORIES.map(([key, label, max]) => (
                   <div key={key}>
@@ -213,7 +211,7 @@ export default function PartnerProfile({ candidate, api, onClose }) {
                   </div>
                 ))}
               </div>
-            </section>
+            </details>
             {enrichment && (
               <section className="discovery-profile-section">
                 <h3>Public listing enrichment</h3>

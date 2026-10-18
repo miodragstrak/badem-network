@@ -251,6 +251,9 @@ def test_geo_distance_and_relevance_ranking_persist_and_survive_restart(google_s
     for detail in details:
         assert detail["partner_profile"]["distance_km"] == detail["distance_km"]
         assert coordinates(detail["partner_profile"]["location"]) is not None
+        assert coordinates(detail) == coordinates(detail["partner_profile"]["location"])
+    assert [coordinates(row) for row in candidates] == [coordinates(row) for row in details]
+    assert coordinates(candidates[0]) != ORIGIN
     with sqlite3.connect(db_path) as connection:
         profiles = [json.loads(row[0]) for row in connection.execute("SELECT profile_json FROM public_capacity_profiles")]
         assert sorted(row["distance_km"] for row in profiles) == [.1, 30., 80.]
@@ -314,6 +317,7 @@ def test_unavailable_candidate_coordinates_expose_null_not_invented_distance(goo
     assert response.status_code == 200
     candidate = response.json()["candidates"][0]
     assert candidate["distance_km"] is None
+    assert candidate["latitude"] is candidate["longitude"] is None
     detail = client.get(f"/api/partner-candidates/{candidate['candidate_id']}", headers=ADMIN).json()
     assert detail["distance_km"] is None
     assert "distance_km" not in detail["partner_profile"]

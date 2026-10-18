@@ -1,5 +1,5 @@
 import { env as runtimeEnv } from 'node:process'
-import { GatewayError as ProxyError, apiOrigin, gatewayOrigins, requireGatewayOrigin, reply } from './gateway-http.js'
+import { GatewayError as ProxyError, apiOrigin, loopbackOrigin, gatewayOrigins, requireGatewayOrigin, reply } from './gateway-http.js'
 import { authenticateBeta, reserveDiscovery } from './private-beta.js'
 
 const MAX_REQUEST_BYTES = 65536
@@ -141,6 +141,7 @@ export function createDiscoveryProxy({
   securityFetcher = globalThis.fetch,
   allowedOrigins = gatewayOrigins(env),
   timeoutMs = 110000,
+  developmentTarget,
 } = {}) {
   return async function discoveryProxy(request, response) {
     let timer
@@ -155,7 +156,10 @@ export function createDiscoveryProxy({
         throw new ProxyError(405, 'Method not allowed.')
       }
       requireGatewayOrigin(request, allowedOrigins)
-      const origin = apiOrigin(env.BADEM_API_ORIGIN)
+      // Only the Vite adapter supplies this option; runtime env cannot enable it.
+      const origin = developmentTarget === undefined
+        ? apiOrigin(env.BADEM_API_ORIGIN)
+        : loopbackOrigin(developmentTarget)
       const secret = env.BADEM_SERVER_ADMIN_KEY
       if (!origin || typeof secret !== 'string' || !secret.trim() || /[\r\n]/.test(secret)) {
         throw new ProxyError(503, 'The BADEM service is not configured.')

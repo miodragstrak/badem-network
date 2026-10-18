@@ -13,6 +13,7 @@ TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places/"
 FIELD_MASK = "places.id,places.displayName,places.addressComponents,places.primaryType,places.types"
 GEO_FIELD_MASK = FIELD_MASK + ",places.location"
+LOCATION_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.addressComponents,places.location"
 DETAILS_FIELD_MASK = "websiteUri,rating,userRatingCount,businessStatus"
 MAX_RESULTS_PER_QUERY = 5
 REQUEST_TIMEOUT_SECONDS = 5
@@ -52,6 +53,18 @@ class GooglePlacesClient:
         region = supported_region_code(region_code)
         if region:
             payload["regionCode"] = region
+        return self._search(payload, mask, MAX_RESULTS_PER_QUERY)
+
+    def location_search(self, query: str, *, region_code: str | None = None) -> dict | None:
+        """Resolve one submitted location with one result; never paginate or retry."""
+        payload = {"textQuery": query, "pageSize": 1, "languageCode": "en"}
+        region = supported_region_code(region_code)
+        if region:
+            payload["regionCode"] = region
+        places = self._search(payload, LOCATION_FIELD_MASK, 1)
+        return places[0] if places else None
+
+    def _search(self, payload: dict, mask: str, limit: int) -> list[dict]:
         try:
             with httpx.Client(transport=self.transport, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False) as client:
                 response = client.post(TEXT_SEARCH_URL, headers={
@@ -72,7 +85,7 @@ class GooglePlacesClient:
         places = body.get("places", [])
         if not isinstance(places, list):
             raise DiscoveryProviderError("Google Places returned a malformed places list")
-        return [place for place in places[:MAX_RESULTS_PER_QUERY] if isinstance(place, dict)]
+        return [place for place in places[:limit] if isinstance(place, dict)]
 
     def place_details(self, place_id: str) -> dict:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", place_id):

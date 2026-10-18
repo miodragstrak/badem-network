@@ -121,6 +121,10 @@ class PartnerCandidate(BaseModel):
     disclaimer: str
     distance_km: float | None = Field(default=None, ge=0, allow_inf_nan=False,
                                      description="Derived straight-line distance, not driving distance; null when unavailable.")
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False,
+                                  description="Public workshop latitude, not the customer's location.")
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False,
+                                   description="Public workshop longitude, not the customer's location.")
 
 
 class PartnerCandidateDetail(PartnerCandidate):

@@ -43,13 +43,82 @@ Open `/discovery` for the buyer-facing, single-route wizard:
 1. **Request:** create a manufacturing request with title, description, location
    and quantity. The example values are editable, not a submitted job.
 2. **Specification:** manually review process, material, quantity, optional
-   dimensions in mm, requirements and city/country. Quantity and explicitly
+   dimensions in mm, requirements and location. Quantity and explicitly
    comma-separated location are copied from the request; no AI or description
    parsing takes place. Laser engraving/plywood are editable initial selections.
-3. **Partners:** display the backend's ranked candidates, scores out of 100,
-   fit labels, **Fit confidence**, exact reasoning, source and disclaimer.
+3. **Partners:** show nearby public-data matches in a synchronized map/list,
+   with simple potential-match labels, straight-line distance when available,
+   a short evidence summary, source and the unchanged disclaimer.
    `View partner profile` opens an accessible modal with inferred capabilities,
-   public evidence, score breakdown and optional public listing enrichment.
+   public evidence and optional public listing enrichment. Raw scores and fit
+   confidence remain in the accessible **Technical fit details** disclosure.
+
+### Nearby UX V1.2B
+
+Both entry steps use a single Location field. Manual text such as `Belgrade,
+Serbia` is sent as `location.display_name` alongside the existing city/country
+fallback. With Google discovery enabled, the authenticated specification save
+resolves it server-side through one Places Text Search request (`pageSize: 1`,
+five-second provider timeout, no retries, pagination or details requests).
+Successful resolution stores and returns a canonical display name, city, country
+and coordinates; the draft then uses these coordinates for geo discovery and
+subsequent submissions. Editing Location clears them. Resolution failure keeps
+the text fallback and allows discovery to continue, including the existing
+no-coordinate map state. There is no autocomplete or browser location-resolution
+request; `GOOGLE_PLACES_API_KEY` remains on the backend. Specification saves and
+discovery retain their existing quota behavior.
+
+**Use my location** requests browser geolocation only
+after a click, with a 10-second timeout; denial, unsupported devices and failures
+leave manual entry available. Coordinates are held only in the current draft and
+sent in the authenticated specification payload, not URLs, request descriptions,
+local storage, analytics, reverse geocoding or a browser Places call. The label is
+`Current location`; no city or country is inferred. A coordinate-only request has
+no country filter. Editing its Location text clears coordinates to avoid using a
+stale device point for a new manual location. Submitting waits for location sharing
+to finish or be cancelled by editing.
+
+The backend's ranking is preserved; the browser does not sort by proximity or
+invent a distance. Distances below 10 km have one decimal, others are rounded km,
+and missing distances are omitted. Partial process signals remain explicitly
+unconfirmed; wood-only signals do not become laser engraving claims. Empty results
+never substitute unrelated businesses or fixtures. Sparse and unlocated results
+remain usable as a list. Numbered markers and cards share a selected state,
+including a checkmark/text indicator and keyboard access. On mobile the compact map
+precedes the list. The map never receives the customer's device point.
+
+For maps, set these **build-time** variables in the Vercel `apps/web` project:
+
+```text
+VITE_GOOGLE_MAPS_BROWSER_KEY=<separate restricted browser key>
+VITE_GOOGLE_MAPS_MAP_ID=<JavaScript map ID with Advanced Markers enabled>
+```
+
+Enable Maps JavaScript API and configure billing/budgets in the Google Cloud
+project. Restrict this separate key to **Maps JavaScript API** and **Websites /
+HTTP referrers**, including `https://app.badem.network/*`; approve preview/local
+origins separately only when needed. Use an origin-level referrer restriction,
+not a path-specific one. This key and map ID are intentionally public, not
+credentials for BADEM or server Places. Never copy `GOOGLE_PLACES_API_KEY` into a
+`VITE_` variable. If both are accidentally configured with the same value in the
+build environment, map configuration is discarded. No automatic VITE exposure is
+enabled. See [Google key restrictions](https://developers.google.com/maps/api-security-best-practices)
+and [Advanced Markers](https://developers.google.com/maps/documentation/javascript/advanced-markers/overview).
+
+With either variable missing, or an SDK/auth/loading error, the UI shows an honest
+map-unavailable state and preserves all list/profile functionality. The SDK loads
+only for an authenticated results view with usable workshop coordinates, and only
+plots returned public workshop points. No geocoder, Places browser library,
+directions service or extra per-candidate profile fetch is used. Existing Google
+attribution is left visible. Real map rendering still needs the restricted key,
+map ID and production browser validation; unit/smoke tests mock the SDK and make
+no paid Google calls.
+
+Candidate list/profile responses expose nullable `latitude`/`longitude`, copied
+from already stored public profile data. Legacy profiles return nulls; ownership
+checks still apply. Manual resolution supplies an origin to the existing geo
+path; scoring, radius expansion, relevance filtering, discovery query limits,
+quota and protocol behavior are unchanged.
 
 See [Private Beta setup](../../docs/private-beta.md) before running Discovery.
 Google OAuth and existing-user email magic links return to `/discovery`.
@@ -63,6 +132,12 @@ ownerless resources return 404. Neither header nor ownership may be chosen by
 the browser. The local Vite middleware uses the same protections, not a direct
 admin proxy. `BADEM_API_PROXY_TARGET` selects a loopback API (default port 8000);
 use disposable backend credentials and an isolated test Supabase project.
+Local Vite discovery does not require `BADEM_API_ORIGIN`: its validated
+`BADEM_API_PROXY_TARGET` is passed explicitly to the server-side gateway and
+revalidated as an HTTP/HTTPS localhost, 127.0.0.1 or ::1 origin, without a path,
+credentials, query or fragment. Invalid targets fail closed before Auth/quota or
+backend dispatch; the admin key remains required. Vercel ignores this local
+environment variable and still requires a public HTTPS `BADEM_API_ORIGIN`.
 
 Only the project URL and publishable/legacy anon key may use `VITE_SUPABASE_*`.
 The former `VITE_BADEM_ADMIN_KEY` is ignored even in development. The
@@ -119,7 +194,9 @@ npm run build
 ```
 
 Tests use Node's built-in runner, with injected fetch responses for API errors,
-ordering, empty results, cancellation and validation. Routing tests use the
+ordering, empty results, cancellation and validation. Nearby tests also cover
+geolocation, manual fallback, evidence/distance labels, SSR sparse/empty views and
+a mocked SDK selection/cleanup adapter. Routing tests use the
 existing Vercel rewrite compiler. Supabase JS is the only new dependency.
 The SQL regression test starts an isolated Unix-socket-only PostgreSQL cluster,
 races 24 connections, checks restricted roles and restarts it. Install PostgreSQL

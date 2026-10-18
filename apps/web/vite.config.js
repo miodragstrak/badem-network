@@ -4,6 +4,7 @@ import { browserAuthConfig } from './src/auth/config.js'
 import { apiOrigin } from './server/gateway-http.js'
 import { privateBetaDevPlugin } from './server/private-beta-dev.js'
 import { explicitAuthOrigin } from './server/auth-build.js'
+import { browserMapsConfig } from './src/discovery/maps.js'
 
 export default defineConfig(({ command, mode, isPreview }) => {
   const production = command === 'build' || isPreview || mode === 'production'
@@ -12,11 +13,15 @@ export default defineConfig(({ command, mode, isPreview }) => {
     url: apiOrigin(local.VITE_SUPABASE_URL),
     key: local.VITE_SUPABASE_PUBLISHABLE_KEY || '',
   })
+  const maps = browserMapsConfig({ key: local.VITE_GOOGLE_MAPS_BROWSER_KEY,
+    mapId: local.VITE_GOOGLE_MAPS_MAP_ID, serverKey: local.GOOGLE_PLACES_API_KEY })
   const publicValues = {
     VITE_BADEM_API_URL: production ? '/badem-api' : local.VITE_BADEM_API_URL || '/badem-api',
     VITE_BADEM_ADMIN_KEY: '',
     VITE_SUPABASE_URL: auth?.url || '',
     VITE_SUPABASE_PUBLISHABLE_KEY: auth?.key || '',
+    VITE_GOOGLE_MAPS_BROWSER_KEY: maps?.key || '',
+    VITE_GOOGLE_MAPS_MAP_ID: maps?.mapId || '',
     VITE_BADEM_JOB_ID: production ? '' : local.VITE_BADEM_JOB_ID || '',
     VITE_BADEM_PROOF_ID: production ? '' : local.VITE_BADEM_PROOF_ID || '',
     VITE_BADEM_NODE_ID: production ? '' : local.VITE_BADEM_NODE_ID || '',

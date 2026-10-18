@@ -2,6 +2,8 @@
 
 import re
 
+from pydantic import ValidationError
+
 from backend.discovery.countries import region_code
 from backend.discovery.enrichment import configured_enrichment_limit, derive_public_evidence
 from backend.discovery.geo import (
@@ -12,6 +14,7 @@ from backend.discovery.places_client import GooglePlacesClient
 from backend.discovery.profile_builder import build_profile, normalize_term
 from backend.discovery.query_builder import MAX_QUERIES, build_queries
 from backend.discovery.scorer import score_profile
+from backend.discovery.schemas import SpecificationLocation
 from backend.discovery.signals import normalize_text
 
 
@@ -89,6 +92,26 @@ class GooglePlacesDiscoveryProvider:
 
     def enrich(self, place_id: str) -> dict:
         return derive_public_evidence(self.client.place_details(place_id))
+
+    def resolve_location(self, location: dict) -> dict | None:
+        place = self.client.location_search(location["display_name"],
+                                           region_code=region_code(location_country(location)))
+        if place is None or not matches_country(place, location_country(location)):
+            return None
+        if location.get("country") and not matches_country(place, location["country"]):
+            return None
+        partner = normalize_place(place)
+        if (partner is None or not partner.city or not partner.country
+                or coordinates({"latitude": partner.latitude, "longitude": partner.longitude}) is None):
+            return None
+        try:
+            return SpecificationLocation(
+                display_name=text(place.get("formattedAddress")) or f"{partner.city}, {partner.country}",
+                city=partner.city, country=partner.country, country_code=region_code(partner.country),
+                latitude=partner.latitude, longitude=partner.longitude,
+            ).model_dump(exclude_none=True)
+        except ValidationError:
+            return None
 
     def discover(self, specification: dict) -> list[PublicPartnerData]:
         partners = {}

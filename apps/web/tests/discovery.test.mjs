@@ -42,7 +42,7 @@ test('specification prefill copies explicit quantity/location without parsing pr
     materials: ['plywood'],
     quantity: 30,
     requirements: [],
-    location: { city: 'Belgrade', country: 'RS' },
+    location: { display_name: 'Belgrade, Serbia', city: 'Belgrade', country: 'RS' },
   })
 })
 
@@ -64,7 +64,7 @@ test('manual dimensions, custom material and requirements produce API JSON', () 
     quantity: 30,
     dimensions_mm: { width: 50, height: 50, thickness: 3 },
     requirements: ['engraved logo', 'rounded edges'],
-    location: { city: 'Belgrade', country: 'RS' },
+    location: { display_name: 'Belgrade, Serbia', city: 'Belgrade', country: 'RS' },
   })
   assert.ok(validateSpecification({ ...values, customMaterial: ' ' }).customMaterial)
   for (const width of ['-3', 'Infinity', '0', 'NaN'])
@@ -88,7 +88,7 @@ test('all required process/material options are accepted', () => {
     assert.deepEqual(validateSpecification({ ...base, process }), {})
   for (const material of ['plywood', 'wood', 'metal', 'plastic', 'acrylic', 'other'])
     assert.deepEqual(validateSpecification({ ...base, material, customMaterial: 'Brass' }), {})
-  assert.equal(specificationPayload({ ...base, city: '', country: '' }).location, undefined)
+  assert.equal(specificationPayload({ ...base, location: '', city: '', country: '' }).location, undefined)
   assert.equal(humanize('LISTED_OPERATIONAL'), 'Listed operational')
   assert.equal(humanize('medium'), 'Medium')
   assert.equal(humanize('PUBLIC_DATA_ONLY').toUpperCase(), 'PUBLIC DATA ONLY')

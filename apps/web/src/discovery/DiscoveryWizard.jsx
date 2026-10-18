@@ -25,6 +25,9 @@ import {
   validateSpecification,
 } from './forms.js'
 import PartnerProfile from './PartnerProfile.jsx'
+import PartnerResults from './PartnerResults.jsx'
+import LocationField from './LocationField.jsx'
+import { applyResolvedLocation, locationLabel } from './location.js'
 import AppNavigation from '../AppNavigation.jsx'
 import '../App.css'
 import './discovery.css'
@@ -37,12 +40,12 @@ const STEPS = [
 const HEADINGS = [
   'Describe what you need made',
   'Review manufacturing specification',
-  'Potential production partners',
+  'Nearby manufacturing partners',
 ]
 const SUBHEADINGS = [
   'Tell BADEM what you want to produce. We\u2019ll turn it into a manufacturing specification and discover potential production partners.',
   'Review the process, material and production requirements.',
-  'Ranked using publicly available business signals and your manufacturing specification.',
+  'Relevant public manufacturing signals, with distance where available. Production capability is not verified.',
 ]
 
 function Field({ name, label, error, children, ...props }) {
@@ -93,9 +96,10 @@ function Progress({ step }) {
 }
 
 function RequestForm({ values, setValues, errors, busy, onSubmit }) {
+  const [locating, setLocating] = useState(false)
   const update = (event) => setValues({ ...values, [event.target.name]: event.target.value })
   return (
-    <form noValidate onSubmit={onSubmit} className="discovery-form">
+    <form noValidate onSubmit={(event) => { if (locating) event.preventDefault(); else onSubmit(event) }} className="discovery-form">
       <fieldset disabled={busy}>
         <Field
           name="title"
@@ -119,33 +123,22 @@ function RequestForm({ values, setValues, errors, busy, onSubmit }) {
             aria-describedby={errors.description ? 'error-description' : undefined}
           />
         </Field>
-        <div className="discovery-field-row">
-          <Field
-            name="location"
-            label="Location"
-            value={values.location}
-            onChange={update}
-            placeholder="Belgrade, Serbia"
-            maxLength={240}
-            required
-            error={errors.location}
-          />
-          <Field
-            name="quantity"
-            label="Quantity"
-            type="number"
-            inputMode="numeric"
-            min="1"
-            step="1"
-            value={values.quantity}
-            onChange={update}
-            required
-            error={errors.quantity}
-          />
-        </div>
+        <LocationField values={values} setValues={setValues} error={errors.location} disabled={busy} onBusyChange={setLocating} />
+        <Field
+          name="quantity"
+          label="Quantity"
+          type="number"
+          inputMode="numeric"
+          min="1"
+          step="1"
+          value={values.quantity}
+          onChange={update}
+          required
+          error={errors.quantity}
+        />
       </fieldset>
       <div className="discovery-form-actions">
-        <button className="discovery-button primary" type="submit" disabled={busy}>
+        <button className="discovery-button primary" type="submit" disabled={busy || locating}>
           {busy ? (
             <Loader2 className="spin" aria-hidden="true" />
           ) : (
@@ -159,10 +152,12 @@ function RequestForm({ values, setValues, errors, busy, onSubmit }) {
 }
 
 function SpecificationForm({ values, setValues, errors, busy, onSubmit }) {
+  const [locating, setLocating] = useState(false)
   const update = (event) => setValues({ ...values, [event.target.name]: event.target.value })
   return (
-    <form noValidate onSubmit={onSubmit} className="discovery-form">
+    <form noValidate onSubmit={(event) => { if (locating) event.preventDefault(); else onSubmit(event) }} className="discovery-form">
       <fieldset disabled={busy}>
+        <LocationField values={values} setValues={setValues} error={errors.location} disabled={busy} onBusyChange={setLocating} />
         <div className="discovery-field-row">
           <Field name="process" label="Process" error={errors.process}>
             <select
@@ -254,28 +249,9 @@ function SpecificationForm({ values, setValues, errors, busy, onSubmit }) {
             aria-describedby={errors.requirements ? 'error-requirements' : undefined}
           />
         </Field>
-        <div className="discovery-field-row">
-          <Field
-            name="city"
-            label="City"
-            value={values.city}
-            onChange={update}
-            maxLength={120}
-            error={errors.city}
-          />
-          <Field
-            name="country"
-            label="Country"
-            value={values.country}
-            onChange={update}
-            placeholder="RS"
-            maxLength={120}
-            error={errors.country}
-          />
-        </div>
       </fieldset>
       <div className="discovery-form-actions">
-        <button className="discovery-button primary" type="submit" disabled={busy}>
+        <button className="discovery-button primary" type="submit" disabled={busy || locating}>
           {busy ? <Loader2 className="spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
           {busy ? 'Discovering potential partners...' : 'Find potential partners'}
         </button>
@@ -330,64 +306,13 @@ function RequestSummary({ request, specification, step }) {
             <div>
               <dt>Location</dt>
               <dd>
-                {[specification.city, specification.country].filter(Boolean).join(', ') ||
-                  'Not specified'}
+                {locationLabel(specification)}
               </dd>
             </div>
           </dl>
         </>
       )}
     </aside>
-  )
-}
-
-function PartnerCard({ candidate, rank, onProfile }) {
-  return (
-    <article className="discovery-partner">
-      <header>
-        <div className="discovery-partner-name">
-          <span className="discovery-rank">#{rank}</span>
-          <h2>{candidate.name}</h2>
-        </div>
-        <div className="discovery-fit">
-          <strong>
-            {candidate.fit_score}
-            <small>/100</small>
-          </strong>
-          <span>{candidate.fit_label}</span>
-        </div>
-      </header>
-      <div className="discovery-partner-meta">
-        <span>
-          Fit confidence: <b>{humanize(candidate.confidence)}</b>
-        </span>
-        <span>
-          {candidate.is_mock ? 'Mock public data (fictional)' : 'Google Places public data'}
-        </span>
-      </div>
-      <h3>Why this match</h3>
-      <ul className="discovery-reasons">
-        {candidate.reasoning.slice(0, 4).map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
-      </ul>
-      <footer>
-        <div>
-          <span className="discovery-public-label">
-            {humanize(candidate.verification_status).toUpperCase()}
-          </span>
-          <p className="discovery-disclaimer">{candidate.disclaimer}</p>
-        </div>
-        <button
-          type="button"
-          className="discovery-button secondary"
-          onClick={() => onProfile(candidate)}
-        >
-          View partner profile
-          <ArrowRight aria-hidden="true" />
-        </button>
-      </footer>
-    </article>
   )
 }
 
@@ -465,8 +390,9 @@ export default function DiscoveryWizard({ getAccessToken, onAccessError, account
     setError('')
     setBusy('Saving manufacturing specification...')
     try {
-      await api.saveSpecification(requestId, specificationPayload(specification), controller.signal)
+      const saved = await api.saveSpecification(requestId, specificationPayload(specification), controller.signal)
       if (controller.signal.aborted) return
+      setSpecification((current) => applyResolvedLocation(current, saved.payload?.location))
       setBusy(
         'Discovering potential production partners... Analyzing public manufacturing signals...',
       )
@@ -578,8 +504,7 @@ export default function DiscoveryWizard({ getAccessToken, onAccessError, account
                 </span>
                 <span>
                   <MapPin aria-hidden="true" />
-                  {[specification.city, specification.country].filter(Boolean).join(', ') ||
-                    'Location not specified'}
+                  {locationLabel(specification)}
                 </span>
               </div>
               <button
@@ -595,35 +520,7 @@ export default function DiscoveryWizard({ getAccessToken, onAccessError, account
                 Edit specification
               </button>
             </div>
-            <div className="discovery-results-count">
-              <span>
-                {result.candidates.length} potential{' '}
-                {result.candidates.length === 1 ? 'partner' : 'partners'}
-              </span>
-              <span>
-                {result.provider === 'MOCK_PUBLIC_DATA'
-                  ? 'Mock provider \u00b7 fictional public-data fixtures'
-                  : 'Google Places \u00b7 public-data signals'}
-              </span>
-            </div>
-            {result.candidates.length ? (
-              <div className="discovery-partners">
-                {result.candidates.map((candidate, index) => (
-                  <PartnerCard
-                    key={candidate.candidate_id}
-                    candidate={candidate}
-                    rank={index + 1}
-                    onProfile={setProfile}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="discovery-empty">
-                <Search aria-hidden="true" />
-                <h2>No strong potential production partners were found for this specification.</h2>
-                <p>Try adjusting the process, material, or location.</p>
-              </div>
-            )}
+            <PartnerResults result={result} specification={specification} onProfile={setProfile} />
           </>
         )}
         {step > 1 && (

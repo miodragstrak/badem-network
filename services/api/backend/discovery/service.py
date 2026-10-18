@@ -45,12 +45,25 @@ class DiscoveryService:
 
     def store_specification(self, request_id: str, payload: ManufacturingSpecificationPayload,
                             *, owner_user_id: str) -> tuple[dict, bool]:
+        specification_payload = payload.model_dump(mode="json", exclude_unset=True)
+        location = specification_payload.get("location") or {}
+        resolve_location = getattr(self.provider, "resolve_location", None)
+        if location.get("display_name") and coordinates(location) is None and callable(resolve_location):
+            # Authorize before paid I/O, and do not hold a database lock during resolution.
+            with self.db() as connection:
+                self.require_request(connection, request_id, owner_user_id)
+            try:
+                resolved = resolve_location(location)
+            except DiscoveryProviderError:
+                resolved = None
+            if resolved is not None:
+                specification_payload["location"] = {**location, **resolved}
         with self.db() as connection:
             self.require_request(connection, request_id, owner_user_id)
             previous = models.get_specification(connection, request_id)
             specification = {
                 "id": previous["id"] if previous else str(uuid.uuid4()), "request_id": request_id,
-                "payload": payload.model_dump(mode="json", exclude_unset=True),
+                "payload": specification_payload,
                 "created_at": previous["created_at"] if previous else int(self.clock()),
             }
             models.save_specification(connection, specification)
@@ -67,6 +80,7 @@ class DiscoveryService:
     @staticmethod
     def candidate_response(row: dict, detailed: bool = False) -> dict:
         profile = json.loads(row["profile_json"])
+        point = coordinates(profile.get("location"))
         profile["reasoning"] = canonical_reasoning(profile["reasoning"])
         profile["confidence"] = row["confidence"]
         # Keep legacy location/activity-only snapshots conservative without rescoring.
@@ -80,6 +94,8 @@ class DiscoveryService:
             "is_mock": row["source"] == models.MOCK_SOURCE,
             "verification_status": row["verification_status"], "disclaimer": profile["disclaimer"],
             "distance_km": profile.get("distance_km"),
+            "latitude": point[0] if point is not None else None,
+            "longitude": point[1] if point is not None else None,
         }
         if detailed:
             result.update({"source_place_id": row["source_place_id"],

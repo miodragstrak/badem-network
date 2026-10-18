@@ -14,6 +14,26 @@ export function apiOrigin(value) {
   return url.pathname === '/' && !url.search && !url.hash ? url.origin : ''
 }
 
+export function loopbackOrigin(value) {
+  if (typeof value !== 'string' || !value) return ''
+  try {
+    const url = new URL(value)
+    if (
+      ['http:', 'https:'].includes(url.protocol) &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      url.pathname === '/' &&
+      !url.search &&
+      !url.hash
+    )
+      return url.origin
+  } catch {
+    /* Invalid development targets never fall back to a public backend. */
+  }
+  return ''
+}
+
 export function gatewayOrigins(env) {
   const allowed = ['https://app.badem.network', 'https://badem.network']
   for (const host of [env.VERCEL_URL, env.VERCEL_PROJECT_PRODUCTION_URL]) {

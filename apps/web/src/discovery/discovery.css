@@ -124,12 +124,14 @@
   margin-bottom: 20px;
 }
 .discovery-field label,
+.discovery-location-field > label,
 .discovery-dimensions legend {
   color: var(--soft);
   font-size: 0.875rem;
   font-weight: 650;
 }
 .discovery-field input,
+.discovery-location-controls input,
 .discovery-field textarea,
 .discovery-field select {
   width: 100%;
@@ -176,6 +178,29 @@
 }
 .discovery-field [aria-invalid='true'] {
   border-color: var(--badem-danger);
+}
+.discovery-location-controls input[aria-invalid='true'] {
+  border-color: var(--badem-danger);
+}
+.discovery-location-field {
+  margin: 0 0 20px;
+}
+.discovery-location-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.discovery-location-controls input { flex: 1; }
+.discovery-location-controls button { flex-shrink: 0; }
+.discovery-location-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .discovery-field-error {
   margin: 0;
@@ -329,9 +354,97 @@
 }
 .discovery-partners {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
 }
+.discovery-nearby-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 28px 0 20px;
+}
+.discovery-nearby-heading h2 { margin: 0 0 8px; font-size: 1.25rem; line-height: 1.5; }
+.discovery-nearby-heading p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.discovery-nearby-heading > span { color: var(--muted); font-size: 0.8125rem; }
+.discovery-nearby-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+}
+.discovery-nearby .discovery-partners { grid-column: 1; grid-row: 1; }
+.discovery-nearby .discovery-map { grid-column: 2; grid-row: 1; }
+.discovery-map {
+  position: sticky;
+  top: 20px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.discovery-map > header { padding: 18px; border-bottom: 1px solid var(--line); }
+.discovery-map h2 { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; font-size: 1rem; }
+.discovery-map header > span { color: var(--muted); font-size: 0.8125rem; }
+.discovery-map-surface { position: relative; height: 430px; background: var(--badem-image-bg); }
+.discovery-map-canvas { width: 100%; height: 100%; }
+.discovery-map-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+  line-height: 1.6;
+}
+.discovery-map-message > svg { width: 28px; height: 28px; margin-bottom: 16px; color: var(--muted); }
+.discovery-map-message p { color: var(--muted); margin: 8px 0 0; max-width: 250px; font-size: 0.875rem; }
+.discovery-map footer { display: grid; gap: 6px; padding: 16px 18px; border-top: 1px solid var(--line); font-size: 0.8125rem; line-height: 1.5; color: var(--muted); }
+.discovery-map-pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 2px solid var(--badem-ink);
+  border-radius: 50%;
+  background: var(--badem-surface);
+  color: var(--badem-ink);
+  font: 700 16px var(--badem-font-body);
+  box-shadow: 0 2px 6px #172e2730;
+}
+.discovery-map-pin.selected { background: var(--badem-lime); outline: 3px solid var(--badem-surface); }
+.discovery-map-pin-check { display: none; }
+.discovery-map-pin.selected .discovery-map-pin-check {
+  position: absolute;
+  right: -5px;
+  top: -7px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--badem-green);
+  color: var(--badem-surface);
+  font-size: 12px;
+}
+.discovery-nearby .discovery-partner { padding: 22px; }
+.discovery-partner.selected { border-color: var(--badem-green); box-shadow: inset 3px 0 var(--badem-green); }
+.discovery-nearby .discovery-partner > header { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.discovery-nearby .discovery-rank { display: grid; place-items: center; width: 30px; height: 30px; margin: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--text); font-size: 0.875rem; }
+.discovery-nearby .discovery-partner h3 { margin: 0; font-size: 1.125rem; line-height: 1.5; color: var(--text); }
+.discovery-partner-select { border: 0; padding: 0; background: none; color: inherit; text-align: left; font: inherit; font-weight: 700; cursor: pointer; }
+.discovery-distance { display: flex; align-items: center; gap: 4px; white-space: nowrap; padding-top: 4px; color: var(--muted); font-size: 0.875rem; }
+.discovery-match-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 16px; font-size: 0.875rem; }
+.discovery-match-row strong { font-weight: 600; color: var(--badem-accent); }
+.discovery-match-row span { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8125rem; color: var(--muted); }
+.discovery-evidence { margin: 12px 0 20px; color: var(--soft); font-size: 0.9375rem; line-height: 1.65; }
+.discovery-technical summary { cursor: pointer; min-height: 36px; font-weight: 650; }
+.discovery-profile-fit b { font-size: 1.125rem; color: var(--badem-accent); }
+.discovery-empty h3 { max-width: 580px; margin: 0 auto; font-size: 1.125rem; line-height: 1.6; }
 .discovery-partner {
   min-width: 0;
   display: flex;
@@ -655,6 +768,9 @@
 }
 
 @media (max-width: 960px) {
+  .discovery-nearby-layout { gap: 20px; }
+  .discovery-nearby .discovery-partner > header { grid-template-columns: 30px minmax(0, 1fr); }
+  .discovery-distance { grid-column: 2; padding: 0; }
   .discovery-workspace {
     grid-template-columns: minmax(0, 1fr) 220px;
     gap: 32px;
@@ -665,6 +781,13 @@
 }
 
 @media (max-width: 680px) {
+  .discovery-nearby-layout { grid-template-columns: minmax(0, 1fr); }
+  .discovery-nearby .discovery-map { grid-column: 1; grid-row: 1; position: static; }
+  .discovery-nearby .discovery-partners { grid-column: 1; grid-row: 2; }
+  .discovery-map-surface { height: 260px; }
+  .discovery-nearby-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .discovery-location-controls { flex-direction: column; }
+  .discovery-location-controls button { align-self: flex-start; }
   .discovery-shell {
     padding: 16px;
   }

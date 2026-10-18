@@ -466,7 +466,8 @@ A specification requires nonempty `process` and `materials` string lists;
 taxonomy terms are not an enum. Quantity, dimensions, requirements and location
 are optional. Additional JSON fields round-trip, with a 64 KiB limit and finite
 JSON values. Request quantity/location metadata may initially be omitted.
-Specifications are supplied directly: no LLM parsing or location geocoding.
+Specifications are supplied directly, without LLM parsing. Optional manual
+location resolution is described under V1.2B below.
 Scoring uses specification location, not parsing of request `location_text`.
 
 The fictional fixtures cover laser, CNC, maker, 3D-print and sparse workshop
@@ -659,8 +660,10 @@ and -180..180. Zero is valid; booleans and numeric strings are rejected. Optiona
 `country_code` is normalized to a supported uppercase two-letter code. Legacy
 `{"city":"Bor","country":"RS"}` specifications still round-trip unchanged.
 Conflicting legacy/canonical country codes are rejected; when both country
-fields exist, returned Google addresses must satisfy both. A display label or
-coordinates alone never infer a country. No geocoding or location lookup occurs.
+fields exist, returned Google addresses must satisfy both. Coordinates alone
+never infer a country. Manual display labels without coordinates can now use the
+optional V1.2B resolution described below; legacy city/country payloads and
+supplied coordinates do not trigger a lookup.
 
 For valid coordinates, search uses 25 km, then 50 km, then 100 km. At each stage
 at most three deterministic queries are sent. If at least five unique candidates
@@ -687,6 +690,8 @@ Candidate list and profile responses expose optional `distance_km`: straight-lin
 spherical distance in kilometres, rounded to three decimal places, **not driving
 distance**, travel time or a service/availability guarantee. Missing/invalid
 candidate coordinates produce `null`, never zero or a guessed city-centre point.
+Nullable `latitude`/`longitude` response fields expose the same already stored
+public workshop coordinates for map pins, never the customer's request location.
 Such candidates can remain public-data matches, but do not establish proximity
 or count toward the five-geolocated-candidate stop condition.
 
@@ -713,9 +718,10 @@ old candidate snapshots, and ownership/specification are rechecked after provide
 I/O before committing. Private Beta identity, allowlisting, daily quotas and owner
 404s are unchanged; one discover dispatch still consumes one quota attempt,
 regardless of the bounded internal radius stages. Previously stored results need
-rediscovery to gain geometry/distance. No frontend map, browser geolocation,
-autocomplete, new paid API, pricing, quotes, availability, messaging or scheduling
-is introduced, and public-data signals still do not verify machine capacity.
+rediscovery to gain geometry/distance. The V1.2B map and browser location behavior
+are documented in `apps/web/README.md`. No autocomplete, new API service, pricing,
+quotes, availability, messaging or scheduling is introduced, and public-data
+signals still do not verify machine capacity.
 
 Timeouts return HTTP 504; upstream non-2xx, connection/protocol failures, invalid
 JSON and malformed response containers return HTTP 502 with sanitized messages.
@@ -732,6 +738,40 @@ names/locations/types retained inside these derived profiles. This prototype's
 existing persistent profile model has no automatic expiry or attribution UI;
 do not assume it meets production retention/display rules merely because raw
 payloads are not stored. See [Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies).
+
+### Manual Location Resolution V1.2B
+
+To resolve manual text, submit a coordinate-free specification location such as
+`{"display_name":"Belgrade, Serbia","city":"Belgrade","country":"RS"}`.
+With `google_places` configured, saving the specification makes **one** server-side
+[Places Text Search](https://developers.google.com/maps/documentation/places/web-service/text-search)
+request for the display name, with `pageSize: 1`, English response fields and the
+existing region hint when available. It uses the existing server-only
+`GOOGLE_PLACES_API_KEY` in a request header and the five-second provider timeout.
+No retry, pagination, second query or Place Details request is made for resolution.
+
+A usable first result becomes a validated canonical location containing
+`display_name`, `city`, `country`, optional `country_code`, `latitude` and
+`longitude`. Returned addresses must satisfy any submitted country constraint.
+Ownership is checked before provider I/O, outside the database transaction, and
+again before saving. Only normalized location fields are stored or returned.
+Provider errors, timeouts, zero results and malformed or incomplete locations
+leave the submitted fallback unchanged and still save successfully. The mock
+provider and legacy city/country-only payloads retain their existing behavior.
+
+Resolution runs only on submission, never during discovery or result/profile
+reads. Supplied coordinates, including browser geolocation and previously
+resolved canonical payloads, bypass resolution entirely; there is no reverse
+geocoding. The web draft adopts successful resolution for subsequent submissions
+and clears coordinates whenever its location text is edited.
+
+The resolved origin enters the existing geo search, radius expansion, ranking
+and distance pipeline. Manufacturing scores, relevance gates, auth, ownership,
+daily discovery quota and Proof/Solana behavior are unchanged. The one lookup
+per manual submission is separate from the existing bounded discovery queries;
+it does not reserve a daily discovery attempt or introduce a browser key.
+Tests mock all upstream traffic and include failures, coordinate preservation,
+lookup bounds, ownership and credential exclusion from responses/build output.
 
 ### Multilingual Public Signals (Milestone 02C)
 
