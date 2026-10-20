@@ -6,8 +6,7 @@ Proof-of-Production demo.
 ## App Routes
 
 - `/`: focused app home with Discovery and Proof entry cards and the compact
-  DISCOVER -> QUALIFY -> PRODUCE -> PROVE product flow. Qualification is not
-  implemented by this navigation milestone.
+  DISCOVER -> QUALIFY -> PRODUCE -> PROVE product flow.
 - `/discovery`: Private Beta sign-in, followed by the existing partner wizard
   only after server-validated authentication and invited-email access.
 - `/proof`: existing public Proof demo, including `?mode=debug` and
@@ -21,7 +20,7 @@ The four-operation discovery allowlist is unchanged. A separate
 `GET /badem-api/auth/session` function checks access without touching FastAPI.
 The HTML metadata and favicon use BADEM; the favicon is an exact copy of the
 existing landing brand mark. Supabase Auth handles identity only; shortlist,
-qualification and manufacturing-database migration are not included.
+verified capability assessment and onboarding are not included.
 
 Run from `apps/web`:
 
@@ -49,9 +48,38 @@ Open `/discovery` for the buyer-facing, single-route wizard:
 3. **Partners:** show nearby public-data matches in a synchronized map/list,
    with simple potential-match labels, straight-line distance when available,
    a short evidence summary, source and the unchanged disclaimer.
-   `View partner profile` opens an accessible modal with inferred capabilities,
-   public evidence and optional public listing enrichment. Raw scores and fit
+   `View partner profile` opens an accessible qualification modal with supported
+   match evidence, public contact details and optional listing context. Raw scores and fit
    confidence remain in the accessible **Technical fit details** disclosure.
+
+### Partner Qualification V1.3A
+
+The selected profile helps visitors decide whether a workshop is worth contacting,
+without claiming verified capability. `PUBLIC_DATA_ONLY` and the exact disclaimer
+remain visible above the scrollable details, including loading and error states.
+**Why this may be a match** shows only recorded process, material, equipment and
+specialization signals supported by the existing score breakdown; generic listing
+types, location and public activity are not manufacturing evidence. No browser
+rescoring, signal inference or additional provider requests are introduced.
+
+Contact actions use only supplied public values. **Call workshop** preserves the
+backend-normalized phone value and only creates a `tel:` link for a usable number.
+**Visit website** requires an explicit valid HTTP/HTTPS URL, rejects unsafe schemes,
+malformed URLs and embedded credentials, and opens with `noopener noreferrer` and
+no referrer. Missing contacts are not reconstructed from business names or flags.
+Keyboard focus includes these links; Escape and closing return focus to the opener.
+
+The backend contract exposes nullable `website`, `phone`, `address`,
+`business_status`, `rating`, `review_count` and straight-line `distance_km` on
+candidate list/detail responses, with normalized fields also in `partner_profile`.
+Contact/status/rating details come only from the existing bounded top-N enrichment;
+the public address uses already returned structured search address components.
+City/country location summaries and coarse activity flags remain available.
+Legacy, non-enriched and sparse profiles can omit details or return nulls;
+presence flags never become invented values or links.
+Ratings and review counts, when available, stay in **Public business activity**,
+explicitly not evidence of manufacturing capability or product quality. Existing
+map/list selection, manual location, browser geolocation and API flow are unchanged.
 
 ### Nearby UX V1.2B
 
@@ -198,6 +226,8 @@ ordering, empty results, cancellation and validation. Nearby tests also cover
 geolocation, manual fallback, evidence/distance labels, SSR sparse/empty views and
 a mocked SDK selection/cleanup adapter. Routing tests use the
 existing Vercel rewrite compiler. Supabase JS is the only new dependency.
+Qualification tests cover safe contact links, missing/unsafe values, recorded-only
+manufacturing evidence, public activity wording and the persistent disclaimer.
 The SQL regression test starts an isolated Unix-socket-only PostgreSQL cluster,
 races 24 connections, checks restricted roles and restarts it. Install PostgreSQL
 17/18 binaries (or set `BADEM_TEST_POSTGRES_BIN`) and run as a non-root user;

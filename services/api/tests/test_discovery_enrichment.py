@@ -26,7 +26,7 @@ from test_discovery_signals import public_profile
 from test_google_discovery import listing, places_client
 
 
-DETAILS = {"websiteUri": "https://listing.invalid/laser-engraving?private=must-not-persist",
+DETAILS = {"websiteUri": "https://listing.invalid/laser-engraving?ref=public",
            "rating": 4.7, "userRatingCount": 83, "businessStatus": "OPERATIONAL"}
 NAMES = {"p-a": "General Workshop", "p-b": "Tenzor Laser", "p-c": "graver doo",
          "p-d": "Penda lasersko graviranje", "p-e": "Wooding Studio",
@@ -118,7 +118,7 @@ def test_details_endpoint_exact_mask_key_header_timeout_and_closed_client(monkey
         assert request.url.query == b""
         assert request.content == b""
         assert request.headers["X-Goog-Api-Key"] == "test-only-placeholder"
-        assert request.headers["X-Goog-FieldMask"] == "websiteUri,rating,userRatingCount,businessStatus"
+        assert request.headers["X-Goog-FieldMask"] == "websiteUri,rating,userRatingCount,businessStatus,nationalPhoneNumber,internationalPhoneNumber"
         assert request.extensions["timeout"] == {
             kind: REQUEST_TIMEOUT_SECONDS for kind in ("connect", "read", "write", "pool")}
         return httpx.Response(200, json=DETAILS)
@@ -159,14 +159,18 @@ def test_unsafe_enrichment_count_is_a_sanitized_google_startup_error(monkeypatch
     assert "private value" not in str(error.value)
 
 
-def test_raw_details_become_only_derived_boolean_and_category_evidence():
+def test_raw_details_become_normalized_public_fields_separate_from_scoring_evidence():
     evidence = derive_public_evidence({**DETAILS, "unrequestedPrivateField": "must-not-persist"})
-    assert evidence == {"website_present": True, "rating_present": True,
-                        "public_activity_signal_strength": "ESTABLISHED",
-                        "business_operational_signal": "LISTED_OPERATIONAL"}
+    flags = {"website_present": True, "rating_present": True,
+             "public_activity_signal_strength": "ESTABLISHED",
+             "business_operational_signal": "LISTED_OPERATIONAL"}
+    assert evidence == {**flags, "website": DETAILS["websiteUri"], "rating": 4.7,
+                        "review_count": 83, "business_status": "OPERATIONAL"}
     assert public_activity_points(evidence) == 5
+    profile = public_profile("Penda lasersko graviranje")
+    apply_enrichment(profile, evidence)
+    assert profile["enrichment"]["public_evidence"] == flags
     assert "websiteUri" not in evidence
-    assert "rating" not in evidence
     assert "userRatingCount" not in evidence
     assert "businessStatus" not in evidence
 
@@ -286,8 +290,11 @@ def test_default_top_three_are_selected_from_base_ranking_once_then_reranked(enr
     with sqlite3.connect(db_path) as connection:
         stored = " ".join(row[0] for row in connection.execute("SELECT profile_json FROM public_capacity_profiles"))
         assert all(raw not in stored for raw in (
-            "websiteUri", "userRatingCount", "businessStatus", "listing.invalid", "must-not-persist", '"rating":', "4.7",
+            "websiteUri", "userRatingCount", "businessStatus", "must-not-persist",
             "unrequestedPrivateField", "raw-details-must-not-persist"))
+        profiles = [json.loads(row[0]) for row in connection.execute("SELECT profile_json FROM public_capacity_profiles")]
+        assert sum(profile.get("website") == DETAILS["websiteUri"] for profile in profiles) == 3
+        assert sum(profile.get("rating") == 4.7 and profile.get("review_count") == 83 for profile in profiles) == 3
         assert connection.execute("SELECT COUNT(*) FROM partner_candidates").fetchone() == (6,)
         for table in ("jobs", "machine_events", "production_proofs", "proof_anchors"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)

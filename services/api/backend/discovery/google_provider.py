@@ -27,6 +27,31 @@ def text(value) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def public_address(components) -> str | None:
+    """Join returned address parts; locality-only data is not a street address."""
+    if not isinstance(components, list):
+        return None
+    address_types = {"street_number", "route", "premise", "subpremise", "neighborhood", "sublocality",
+                     "locality", "postal_town", "administrative_area_level_1", "administrative_area_level_2",
+                     "postal_code", "country"}
+    values = []
+    has_street = False
+    for component in components:
+        if not isinstance(component, dict) or not isinstance(component.get("types"), list):
+            continue
+        types = {kind for kind in component["types"] if isinstance(kind, str)}
+        if not types & address_types:
+            continue
+        value = " ".join((text(component.get("longText")) or text(component.get("shortText"))).split())
+        if not value or len(value) > 240 or not value.isprintable():
+            continue
+        has_street = has_street or bool(types & {"route", "premise", "subpremise"})
+        if value not in values:
+            values.append(value)
+    address = ", ".join(values)
+    return address if has_street and len(address) <= 1000 else None
+
+
 def normalize_place(place: dict) -> PublicPartnerData | None:
     place_id = text(place.get("id"))
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", place_id):
@@ -56,6 +81,7 @@ def normalize_place(place: dict) -> PublicPartnerData | None:
         city=city, country=country, source=GOOGLE_SOURCE,
         materials=tuple(sorted(words & NAME_MATERIALS)), specializations=tuple(sorted(set(types))),
         latitude=point[0] if point is not None else None, longitude=point[1] if point is not None else None,
+        address=public_address(components),
     )
 
 

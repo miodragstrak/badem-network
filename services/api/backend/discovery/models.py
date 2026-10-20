@@ -74,6 +74,7 @@ class PublicPartnerData:
     source: str = MOCK_SOURCE
     latitude: float | None = None
     longitude: float | None = None
+    address: str | None = None
 
 
 class DiscoveryProvider(Protocol):

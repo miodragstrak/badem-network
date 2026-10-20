@@ -14,7 +14,7 @@ PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places/"
 FIELD_MASK = "places.id,places.displayName,places.addressComponents,places.primaryType,places.types"
 GEO_FIELD_MASK = FIELD_MASK + ",places.location"
 LOCATION_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.addressComponents,places.location"
-DETAILS_FIELD_MASK = "websiteUri,rating,userRatingCount,businessStatus"
+DETAILS_FIELD_MASK = "websiteUri,rating,userRatingCount,businessStatus,nationalPhoneNumber,internationalPhoneNumber"
 MAX_RESULTS_PER_QUERY = 5
 REQUEST_TIMEOUT_SECONDS = 5
 

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 
 from backend.discovery import models
-from backend.discovery.enrichment import MAX_ENRICH_TOP_N, apply_enrichment
+from backend.discovery.enrichment import MAX_ENRICH_TOP_N, PUBLIC_DETAIL_FIELDS, apply_enrichment
 from backend.discovery.geo import RELEVANCE_CATEGORIES, coordinates, ranking_key, straight_line_km
 from backend.discovery.mock_provider import MockDiscoveryProvider
 from backend.discovery.places_client import DiscoveryProviderError
@@ -96,6 +96,7 @@ class DiscoveryService:
             "distance_km": profile.get("distance_km"),
             "latitude": point[0] if point is not None else None,
             "longitude": point[1] if point is not None else None,
+            **{field: profile.get(field) for field in (*PUBLIC_DETAIL_FIELDS, "address")},
         }
         if detailed:
             result.update({"source_place_id": row["source_place_id"],

@@ -870,26 +870,84 @@ Each selected candidate gets at most one request:
 
 ```text
 GET https://places.googleapis.com/v1/places/{source_place_id}
-X-Goog-FieldMask: websiteUri,rating,userRatingCount,businessStatus
+X-Goog-FieldMask: websiteUri,rating,userRatingCount,businessStatus,nationalPhoneNumber,internationalPhoneNumber
 ```
 
 The same server-side environment key goes in `X-Goog-Api-Key`, never the URL.
 The client retains the 5-second connect/read/write/pool timeouts, closes after
 each request, ignores environment proxies, and does not follow redirects,
-paginate, retry or follow moved-place IDs. No reviews, photos, phone numbers,
+paginate, retry or follow moved-place IDs. No reviews, photos,
 opening hours, summaries, duplicate name/type fields, website crawling, scraping
-or LLMs are requested or used. Only URI presence is checked; the website is
+or LLMs are requested or used. Only URI syntax/presence is checked; the website is
 never fetched and its text/URL terms do not become manufacturing evidence.
 
-The mask invokes the Place Details Enterprise SKU because website and rating
-fields are included; these are additional potentially billable requests beyond
-the unchanged Text Search Pro calls. See the verified
+The mask invokes the Place Details Enterprise SKU because website, rating and
+phone fields are included; these are additional potentially billable requests
+beyond the unchanged Text Search Pro calls. See the verified
 [Place Details field masks](https://developers.google.com/maps/documentation/places/web-service/place-details)
 and [field/SKU table](https://developers.google.com/maps/documentation/places/web-service/data-fields).
-Maximum requests per discovery: 3 searches plus 3 details by default (6 total),
-or 3 searches plus 5 details with the largest setting (8 total). Empty/smaller
-result sets consume no unused detail budget. Use `0`, Google project quotas and
+Text-only discovery makes at most 3 searches; geo expansion makes at most 9.
+The Details stage adds at most 3 calls by default or 5 with the largest setting,
+without increasing either search budget. Empty/smaller result sets consume no
+unused detail budget. Use `0`, Google project quotas and
 billing limits when details are not appropriate for your deployment.
+
+Phone fields are requested **only in these existing bounded Details calls**, never
+in manufacturing or location-resolution Text Search masks. The API exposes one
+nullable `phone` field on candidate list/profile responses. It is stored once as
+`phone` in the existing profile JSON and exposed as `partner_profile.phone` in
+the detailed response. Prefer a usable
+`internationalPhoneNumber`; fall back to `nationalPhoneNumber` when international
+data is missing, empty or unusable. Formatting separators are removed, optional
+leading `+` and national leading zeros are preserved, and no country code is
+inferred. Normalization accepts 3-15 ASCII digits with an optional leading `+`;
+unsupported extensions/control characters and malformed values are omitted,
+not guessed or truncated. Missing phone data becomes `null` in the API; legacy
+and non-enriched profiles remain valid. No extra request, database schema or
+background fetch is added. Phone presence supplies **no**
+fit, confidence or public-activity credit, and does not verify reachability.
+
+#### V1.3A Public Qualification Fields
+
+Candidate responses from discovery POST, candidate-list GET and
+`GET /api/partner-candidates/{candidate_id}` expose these nullable fields:
+
+| API field | Existing Google input | Normalization / meaning |
+| --- | --- | --- |
+| `website` | Bounded Details `websiteUri` | Valid HTTP(S) contact URL only; no fetch or content inference |
+| `phone` | Bounded Details international/national phone | One normalized value, international-first as above |
+| `address` | Text Search `addressComponents` | Returned street/premise and location parts, whitespace-normalized and deduplicated |
+| `business_status` | Bounded Details `businessStatus` | Known public listing enum; unknown/missing status is null |
+| `rating` | Bounded Details `rating` | Finite numeric 1-5 public business context only |
+| `review_count` | Bounded Details `userRatingCount` | Nonnegative integer public activity context only |
+| `distance_km` | Existing stored derived distance | Straight-line distance, never driving distance |
+
+Text Search already supplies structured address components. The public address
+requires a returned street/route or premise; city/country-only data leaves
+`address` null and continues to use `location_summary`. Component order is retained
+with comma-separated parts, not an assertion of postal deliverability. Neither
+Text Search nor Details field masks change. No formatted-address field, phone,
+website or rating fields are added to broad discovery, and there is no extra
+request, retry or read-time fetch. Contact/status/rating values are retained only
+for the existing bounded top-N selections; address can be available on any result
+from existing search data. Details failure leaves its optional fields null.
+
+The normalized display fields are stored outside `enrichment.public_evidence` in
+the existing profile JSON, alongside the already derived distance. They are copied
+to both list and detailed responses; detailed `partner_profile` retains the same
+normalized values. Missing keys in historical JSON return null on list/detail
+reads without writing or backfilling records. No SQLite table/column migration,
+destructive rewrite or second ownership database is needed; normal initialization
+and existing production rows remain compatible. Rediscovery rebuilds snapshots
+as before, so missing/failed/disabled Details do not retain stale contact data.
+
+These newly exposed values are display-only: numeric rating, exact count,
+address and contact fields are not inputs to the scorer or ranking key. The
+existing coarse website/status/activity flags and their historical scoring and
+confidence rules below are unchanged. Varying a rating or count within the same
+existing activity category does not change ranking. Ratings/reviews describe
+public business activity, not production capability or product quality; address
+is location context and phone/website are contact information only.
 
 Detail enrichment contributes only inside the existing 0-5 public-activity
 category: a valid HTTP(S) website URI contributes 1, a listed-operational
@@ -913,11 +971,18 @@ capability confidence/evidence is unchanged. Corroboration supports only an
 already relevant fit; it is not proof of manufacturing ability, equipment,
 capacity or availability.
 
-Only derived metadata is stored in the existing `profile_json` and exposed
-through the existing detailed `partner_profile`; summary API fields are unchanged:
+Derived metadata and normalized public qualification fields are stored in the
+existing `profile_json`. For example, a detailed `partner_profile` can contain:
 
 ```json
 {
+  "website": "https://workshop.example/contact",
+  "phone": "+12025550123",
+  "address": "12, Workshop Road, Bor, Serbia",
+  "business_status": "OPERATIONAL",
+  "rating": 4.7,
+  "review_count": 83,
+  "distance_km": 4.27,
   "enrichment": {
     "status": "ENRICHED",
     "signals": ["website_present", "operational_listing", "public_activity"],
@@ -932,10 +997,14 @@ through the existing detailed `partner_profile`; summary API fields are unchange
 ```
 
 Evidence strength is `NONE`, `LIMITED` or `ESTABLISHED`; operational evidence is
-`UNKNOWN`, `LISTED_OPERATIONAL` or `LISTED_NON_OPERATIONAL`. URLs, raw ratings,
-exact counts, raw status strings and entire Google detail payloads are transient,
-not stored or logged. Missing optional fields can yield an `ENRICHED` result
-with no signals and no score change. A timeout, non-2xx (including disappeared
+`UNKNOWN`, `LISTED_OPERATIONAL` or `LISTED_NON_OPERATIONAL`. Whole Google payloads,
+raw provider field names, unrequested fields and structured address component
+objects are not persisted or logged. Only the normalized qualification fields
+above and existing derived signals are retained. Raw
+`nationalPhoneNumber`/`internationalPhoneNumber` fields and their original
+formatting are not persisted; only the preferred normalized phone is retained,
+outside scoring evidence. Missing optional fields can yield an
+`ENRICHED` result with no signals and no score change. A timeout, non-2xx (including disappeared
 places/404), transport error, invalid JSON or malformed fields records
 `{"status":"UNAVAILABLE","signals":[]}` and preserves that candidate's base
 score, confidence and reasoning; the remaining selections continue. It does
@@ -943,12 +1012,12 @@ not fail discovery. Base provider-wide failures retain HTTP 502/504 and previous
 persisted results. No background enrichment, caching or automatic refresh exists.
 
 Profiles remain BADEM-derived, `PUBLIC_DATA_ONLY`, with the exact disclaimer.
-Persisting coarse booleans/categories rather than raw details reduces retained
-Google content, but is not an assertion of exemption from Google Maps Platform
+Persisting only normalized public fields and coarse booleans/categories rather
+than whole responses is not an assertion of exemption from Google Maps Platform
 terms. Before production use, review whether your agreement permits these
-derived flags and existing profile storage, and address retention/attribution
+public qualification fields, derived flags and existing profile storage, and address retention/attribution
 requirements from the linked Places policies above. No long-term storage
-permission for raw detail fields is assumed by this prototype.
+permission for Google listing data is assumed by this prototype.
 
 ### Try Google Discovery Locally
 

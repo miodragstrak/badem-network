@@ -58,6 +58,7 @@ def build_profile(partner: PublicPartnerData) -> dict:
         location.update({"latitude": point[0], "longitude": point[1]})
     return {
         "display_name": partner.display_name,
+        "address": partner.address,
         "location_summary": ", ".join(value for value in (partner.city, partner.country) if value) or "Location unavailable",
         "location": location,
         "signals": {

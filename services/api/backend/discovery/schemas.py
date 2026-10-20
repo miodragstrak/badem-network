@@ -125,6 +125,18 @@ class PartnerCandidate(BaseModel):
                                   description="Public workshop latitude, not the customer's location.")
     longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False,
                                    description="Public workshop longitude, not the customer's location.")
+    phone: str | None = Field(default=None, max_length=16,
+                             description="Normalized public listing phone, preferring international format; not verified.")
+    website: str | None = Field(default=None, max_length=2048,
+                               description="Public HTTP(S) contact URL; content and capability have not been verified.")
+    address: str | None = Field(default=None, max_length=1000,
+                               description="Public business address from returned address components, not capability evidence.")
+    business_status: Literal["OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY", "FUTURE_OPENING"] | None = Field(
+        default=None, description="Public listing status, not verified workshop availability.")
+    rating: float | None = Field(default=None, ge=1, le=5, allow_inf_nan=False,
+                                description="Public business rating for context only, not manufacturing capability or quality.")
+    review_count: int | None = Field(default=None, ge=0,
+                                    description="Public rating/review count for activity context only, not capability evidence.")
 
 
 class PartnerCandidateDetail(PartnerCandidate):
