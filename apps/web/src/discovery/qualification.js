@@ -1,4 +1,4 @@
-import { humanize, processLabel } from './forms.js'
+import { humanize, processLabel, SCORE_CATEGORIES } from './forms.js'
 
 export const PUBLIC_DATA_STATUS = 'PUBLIC_DATA_ONLY'
 export const PUBLIC_DATA_DISCLAIMER =
@@ -92,4 +92,25 @@ export function qualificationEvidence(data) {
     if (values.length) rows.push({ label: 'Specialization', items: values.map((value) => ({ label: value, evidence: [] })) })
   }
   return rows
+}
+
+export function qualificationMatchSummary(data) {
+  const evidence = qualificationEvidence(data)
+  const scores = data.score_breakdown || data.partner_profile?.score_breakdown || {}
+  const labels = ['Process', 'Material', 'Equipment', 'Specialization']
+  // Use existing category coverage, never turn raw scores into capability percentages.
+  return SCORE_CATEGORIES.slice(0, 4).map(([key, , maximum], index) => {
+    const label = labels[index]
+    const row = evidence.find((item) => item.label === label)
+    const state = !row ? 'none' : scores[key] < maximum ? 'partial' : 'found'
+    const values = label === 'Specialization'
+      ? strings(data.partner_profile?.signals?.specialization_signals)
+        .filter((value) => !GENERIC_TYPES.has(value.toLowerCase())).map(processLabel)
+      : row?.items.map((item) => item.label) || []
+    return {
+      label, state,
+      status: { none: 'No public signal', partial: 'Partial signal', found: 'Signal found' }[state],
+      signals: row ? values : [],
+    }
+  })
 }

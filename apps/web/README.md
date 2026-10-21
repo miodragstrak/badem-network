@@ -50,7 +50,7 @@ Open `/discovery` for the buyer-facing, single-route wizard:
    a short evidence summary, source and the unchanged disclaimer.
    `View partner profile` opens an accessible qualification modal with supported
    match evidence, public contact details and optional listing context. Raw scores and fit
-   confidence remain in the accessible **Technical fit details** disclosure.
+   confidence remain in the accessible **Technical details** disclosure.
 
 ### Partner Qualification V1.3A
 
@@ -77,9 +77,28 @@ the public address uses already returned structured search address components.
 City/country location summaries and coarse activity flags remain available.
 Legacy, non-enriched and sparse profiles can omit details or return nulls;
 presence flags never become invented values or links.
-Ratings and review counts, when available, stay in **Public business activity**,
+Ratings and review counts, when available, stay beside the business/contact details,
 explicitly not evidence of manufacturing capability or product quality. Existing
 map/list selection, manual location, browser geolocation and API flow are unchanged.
+
+### Profile Simplification V1.3C
+
+The practical business/contact information comes first, including one compact
+rating/review-count group when supplied. **Why this may be a match** contains a
+four-row **Match Summary** for process, material, equipment and specialization.
+Each row uses a readable icon and qualitative state: **Signal found**, **Partial
+signal** or **No public signal**. A positive state requires recorded evidence plus
+existing request-relevant category coverage. Partial means positive coverage below
+the existing category maximum; these are public signals, not capability percentages.
+Generic listing types, location and activity do not create manufacturing evidence.
+
+One native **Technical details** disclosure is collapsed by default. It preserves
+the score breakdown/confidence, original process inferences and evidence, all
+recorded signals, listing enrichment metadata and fit reasoning. Primary sections
+do not repeat the raw evidence or ratings. The persistent verification banner,
+safe contact actions, keyboard focus/return behavior and mobile scroll area are
+unchanged. This is a presentation change only; no backend, ranking, scoring,
+location, Maps, authentication, quota or Proof/Solana behavior is changed.
 
 ### Nearby UX V1.2B
 

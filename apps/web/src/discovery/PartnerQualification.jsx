@@ -1,12 +1,15 @@
-import { Activity, ExternalLink, MapPin, Phone } from 'lucide-react'
+import { CircleDashed, CircleDot, ExternalLink, MapPin, Minus, Phone } from 'lucide-react'
 import { formatDistance, matchLabel } from './presentation.js'
-import { publicPartnerDetails, qualificationEvidence } from './qualification.js'
+import { publicPartnerDetails, qualificationMatchSummary } from './qualification.js'
+import PartnerTechnicalDetails from './PartnerTechnicalDetails.jsx'
+
+const SIGNAL_ICONS = { found: CircleDot, partial: CircleDashed, none: Minus }
 
 export default function PartnerQualification({ data }) {
   const details = publicPartnerDetails(data)
-  const evidence = qualificationEvidence(data)
+  const summary = qualificationMatchSummary(data)
   const distance = formatDistance(data.distance_km)
-  const hasActivity = details.rating !== null || details.reviewCount !== null || details.ratingPresent || details.activity
+  const hasRating = details.rating !== null || details.reviewCount !== null
 
   return (
     <div className="discovery-qualification">
@@ -26,6 +29,15 @@ export default function PartnerQualification({ data }) {
           {details.phone && <div className="discovery-signal"><dt>Public phone</dt><dd>{details.phone.label}</dd></div>}
           {details.businessStatus && <div className="discovery-signal"><dt>Business listing status</dt><dd>{details.businessStatus}</dd></div>}
         </dl>
+        {hasRating && (
+          <div className="discovery-business-context">
+            <dl className="discovery-rating-context">
+              {details.rating !== null && <div><dt>Public rating</dt><dd>{details.rating} / 5</dd></div>}
+              {details.reviewCount !== null && <div><dt>Public review count</dt><dd>{details.reviewCount.toLocaleString('en-GB')}</dd></div>}
+            </dl>
+            <p className="discovery-muted">Public business activity, not production capability or product quality.</p>
+          </div>
+        )}
         {(details.website || details.phone) ? (
           <div className="discovery-contact-actions" aria-label="Workshop contact actions">
             {details.website && (
@@ -49,37 +61,23 @@ export default function PartnerQualification({ data }) {
       </section>
       <section className="discovery-profile-section discovery-qualification-evidence" aria-labelledby="qualification-evidence-title">
         <h3 id="qualification-evidence-title">Why this may be a match</h3>
-        <p className="discovery-muted">Reported public signals, not confirmed production capability or equipment availability.</p>
-        {evidence.length ? (
-          <dl className="discovery-signals">
-            {evidence.map((row) => (
-              <div key={row.label} className="discovery-signal"><dt>{row.label}</dt><dd>
-                <ul className="discovery-qualification-signals">
-                  {row.items.map((item) => (
-                    <li key={item.label}><span>{item.label}</span>
-                      {item.evidence.length > 0 && <ul>{item.evidence.map((value) => <li key={value}>{value}</li>)}</ul>}
-                    </li>
-                  ))}
-                </ul>
-              </dd></div>
-            ))}
-          </dl>
-        ) : <p>No supported manufacturing-match evidence is recorded in this profile.</p>}
+        <h4 className="discovery-match-heading" id="match-summary-title">Match Summary</h4>
+        <p className="discovery-muted">Public signals for this request, not verified capability.</p>
+        <dl className="discovery-match-summary" aria-labelledby="match-summary-title">
+          {summary.map((row) => {
+            const Icon = SIGNAL_ICONS[row.state]
+            return (
+              <div key={row.label} className="discovery-match-summary-row" data-state={row.state}>
+                <dt>{row.label}</dt>
+                <dd><span className="discovery-match-summary-status"><Icon aria-hidden="true" />{row.status}</span>
+                  {row.signals.length > 0 && <span className="discovery-match-summary-signals">{row.signals.join(', ')}</span>}
+                </dd>
+              </div>
+            )
+          })}
+        </dl>
       </section>
-      {hasActivity && (
-        <section className="discovery-profile-section discovery-public-activity" aria-labelledby="public-activity-title">
-          <h3 id="public-activity-title"><Activity aria-hidden="true" /> Public business activity</h3>
-          <p className="discovery-muted">Ratings and review counts are public business context, not evidence of manufacturing capability or product quality.</p>
-          <dl className="discovery-signals">
-            {details.rating !== null && <div className="discovery-signal"><dt>Public rating</dt><dd>{details.rating} / 5</dd></div>}
-            {details.reviewCount !== null && <div className="discovery-signal"><dt>Public review count</dt><dd>{details.reviewCount.toLocaleString('en-GB')}</dd></div>}
-            {details.ratingPresent && details.rating === null && (
-              <div className="discovery-signal"><dt>Rating activity</dt><dd>Recorded; numeric rating not provided</dd></div>
-            )}
-            {details.activity && <div className="discovery-signal"><dt>Listing activity</dt><dd>{details.activity}</dd></div>}
-          </dl>
-        </section>
-      )}
+      <PartnerTechnicalDetails data={data} />
     </div>
   )
 }

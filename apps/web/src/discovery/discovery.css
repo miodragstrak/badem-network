@@ -694,10 +694,22 @@
 .discovery-contact-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .discovery-contact-actions a { text-decoration: none; }
 .discovery-contact-note { margin: 16px 0 0; color: var(--muted); }
-.discovery-profile-section .discovery-qualification-signals { padding: 0; margin: 0; list-style: none; }
-.discovery-qualification-signals > li + li { margin-top: 10px; }
-.discovery-qualification-signals > li > ul { margin: 6px 0 0; color: var(--muted); font-size: 0.8125rem; }
-.discovery-public-activity h3 { display: flex; align-items: center; gap: 8px; }
+.discovery-business-context { margin-top: 16px; }
+.discovery-rating-context { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 0 0 4px; }
+.discovery-rating-context dt { color: var(--muted); font-size: 0.8125rem; }
+.discovery-rating-context dd { margin: 0; font-weight: 650; }
+.discovery-business-context .discovery-muted { margin: 0; font-size: 0.8125rem; }
+.discovery-match-heading { margin: 16px 0 4px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.discovery-match-summary { margin: 0; }
+.discovery-match-summary-row { display: grid; grid-template-columns: minmax(110px, 0.6fr) minmax(0, 1.4fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.discovery-match-summary-row dt { font-weight: 600; }
+.discovery-match-summary-row dd { margin: 0; min-width: 0; }
+.discovery-match-summary-status { display: flex; align-items: center; gap: 8px; color: var(--soft); }
+.discovery-match-summary-row[data-state="found"] .discovery-match-summary-status { color: var(--badem-accent); }
+.discovery-match-summary-row[data-state="none"] .discovery-match-summary-status { color: var(--muted); }
+.discovery-match-summary-signals { display: block; color: var(--muted); margin: 2px 0 0 26px; font-size: 0.8125rem; }
+.discovery-technical-content { padding-top: 12px; }
+.discovery-technical-content h4 { margin: 0 0 12px; font-size: 0.9375rem; font-weight: 650; }
 .discovery-profile a { overflow-wrap: anywhere; }
 .discovery-profile-fit {
   display: flex;
@@ -920,6 +932,7 @@
 }
 
 @media (max-width: 380px) {
+  .discovery-match-summary-row { grid-template-columns: 1fr; gap: 4px; }
   .discovery-field-row:not(.three) {
     grid-template-columns: 1fr;
     gap: 0;
